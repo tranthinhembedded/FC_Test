@@ -1,0 +1,23 @@
+{
+    "version":  "0.2.0",
+    "configurations":  [
+                           {
+                               "name":  "STM32: Debug (Cortex-Debug + ST-LINK)",
+                               "type":  "cortex-debug",
+                               "request":  "launch",
+                               "cwd":  "${workspaceFolder}",
+                               "preLaunchTask":  "STM32: Build",
+                               "servertype":  "stlink",
+                               "serverpath":  "${config:stm32.tools.stlinkGdbServer}",
+                               "stm32cubeprogrammer":  "${config:stm32.tools.cubeProgrammerBin}",
+                               "armToolchainPath":  "${config:stm32.tools.armToolchainBin}",
+                               "gdbPath":  "${config:stm32.tools.gdb}",
+                               "executable":  "${workspaceFolder}/${config:stm32.project.buildDir}/${config:stm32.project.artifactName}.elf",
+                               "device":  "${config:stm32.project.device}",
+                               "interface":  "${config:stm32.debug.interface}",
+                               "runToEntryPoint":  "${config:stm32.project.runToEntryPoint}",
+                               "svdFile":  "${config:stm32.project.svdFile}",
+                               "showDevDebugOutput":  "raw"
+                           }
+                       ]
+}

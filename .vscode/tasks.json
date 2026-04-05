@@ -1,0 +1,100 @@
+{
+    "version":  "2.0.0",
+    "tasks":  [
+                  {
+                      "label":  "STM32: Clean",
+                      "type":  "shell",
+                      "command":  "powershell",
+                      "args":  [
+                                   "-ExecutionPolicy",
+                                   "Bypass",
+                                   "-File",
+                                   "${workspaceFolder}/tools/vscode/stm32.ps1",
+                                   "-Action",
+                                   "clean"
+                               ],
+                      "options":  {
+                                      "cwd":  "${workspaceFolder}"
+                                  },
+                      "problemMatcher":  [
+
+                                         ]
+                  },
+                  {
+                      "label":  "STM32: Build",
+                      "type":  "shell",
+                      "command":  "powershell",
+                      "args":  [
+                                   "-ExecutionPolicy",
+                                   "Bypass",
+                                   "-File",
+                                   "${workspaceFolder}/tools/vscode/stm32.ps1",
+                                   "-Action",
+                                   "build"
+                               ],
+                      "options":  {
+                                      "cwd":  "${workspaceFolder}"
+                                  },
+                      "group":  {
+                                    "kind":  "build",
+                                    "isDefault":  true
+                                },
+                      "problemMatcher":  [
+                                             "$gcc"
+                                         ]
+                  },
+                  {
+                      "label":  "STM32: Rebuild",
+                      "dependsOrder":  "sequence",
+                      "dependsOn":  [
+                                        "STM32: Clean",
+                                        "STM32: Build"
+                                    ],
+                      "problemMatcher":  [
+
+                                         ]
+                  },
+                  {
+                      "label":  "STM32: Flash",
+                      "dependsOrder":  "sequence",
+                      "dependsOn":  [
+                                        "STM32: Build"
+                                    ],
+                      "type":  "shell",
+                      "command":  "powershell",
+                      "args":  [
+                                   "-ExecutionPolicy",
+                                   "Bypass",
+                                   "-File",
+                                   "${workspaceFolder}/tools/vscode/stm32.ps1",
+                                   "-Action",
+                                   "flash"
+                               ],
+                      "options":  {
+                                      "cwd":  "${workspaceFolder}"
+                                  },
+                      "problemMatcher":  [
+
+                                         ]
+                  },
+                  {
+                      "label":  "STM32: Update compile_commands",
+                      "type":  "shell",
+                      "command":  "powershell",
+                      "args":  [
+                                   "-ExecutionPolicy",
+                                   "Bypass",
+                                   "-File",
+                                   "${workspaceFolder}/tools/vscode/stm32.ps1",
+                                   "-Action",
+                                   "compile-commands"
+                               ],
+                      "options":  {
+                                      "cwd":  "${workspaceFolder}"
+                                  },
+                      "problemMatcher":  [
+
+                                         ]
+                  }
+              ]
+}
