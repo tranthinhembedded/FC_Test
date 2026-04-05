@@ -1,0 +1,6 @@
+#ifndef CORE_APP_RC_RECEIVER_RECEIVER_H_
+#define CORE_APP_RC_RECEIVER_RECEIVER_H_
+
+void RcReceiver_Init(void);
+
+#endif /* CORE_APP_RC_RECEIVER_RECEIVER_H_ */

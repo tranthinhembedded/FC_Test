@@ -1,0 +1,2 @@
+../Core/Src/sensor/magnetometer_sensor.c:12:6:HMC5883L_Init	32	static
+../Core/Src/sensor/magnetometer_sensor.c:25:6:COMPASS_PROCESS	40	static

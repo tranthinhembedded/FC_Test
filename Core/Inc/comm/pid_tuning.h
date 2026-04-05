@@ -1,0 +1,7 @@
+#ifndef CORE_APP_COMMUNICATION_PIDTUNING_PID_TUNING_H_
+#define CORE_APP_COMMUNICATION_PIDTUNING_PID_TUNING_H_
+
+void PidTuning_Init(void);
+void PidTuning_ProcessPendingCommand(void);
+
+#endif /* CORE_APP_COMMUNICATION_PIDTUNING_PID_TUNING_H_ */

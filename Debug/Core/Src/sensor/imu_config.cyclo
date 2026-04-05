@@ -1,0 +1,10 @@
+../Core/Src/sensor/imu_config.c:41:13:ICM20602_Select	1
+../Core/Src/sensor/imu_config.c:46:13:ICM20602_Deselect	1
+../Core/Src/sensor/imu_config.c:51:26:ICM20602_WriteRegister	1
+../Core/Src/sensor/imu_config.c:63:26:ICM20602_ReadRegisters	5
+../Core/Src/sensor/imu_config.c:91:26:ICM20602_ReadRegister	1
+../Core/Src/sensor/imu_config.c:96:13:ICM20602_ParseMotionFrame	6
+../Core/Src/sensor/imu_config.c:305:6:ICM20602_Init	13
+../Core/Src/sensor/imu_config.c:359:6:ICM20602_Calibrate	5
+../Core/Src/sensor/imu_config.c:400:9:ICM20602_IsReady	1
+../Core/Src/sensor/imu_config.c:405:6:IMU_PROCESS	3

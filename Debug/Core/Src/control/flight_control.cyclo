@@ -1,0 +1,5 @@
+../Core/Src/control/flight_control.c:13:13:MIX_THROTTLE	4
+../Core/Src/control/flight_control.c:32:13:Control_Motor	3
+../Core/Src/control/flight_control.c:52:6:FlightController_InitMotorOutputs	1
+../Core/Src/control/flight_control.c:65:6:RESET_ALL_PID	1
+../Core/Src/control/flight_control.c:75:6:MPC	25

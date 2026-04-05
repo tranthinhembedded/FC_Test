@@ -1,0 +1,2 @@
+../Core/Src/sensor/mag_calibration.c:3:6:MagCal_Update	48	static
+../Core/Src/sensor/mag_calibration.c:71:6:Mag_ApplyCalibration	32	static

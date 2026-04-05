@@ -1,0 +1,5 @@
+../Core/Src/control/flight_control.c:13:13:MIX_THROTTLE	32	static
+../Core/Src/control/flight_control.c:32:13:Control_Motor	16	static
+../Core/Src/control/flight_control.c:52:6:FlightController_InitMotorOutputs	8	static
+../Core/Src/control/flight_control.c:65:6:RESET_ALL_PID	8	static
+../Core/Src/control/flight_control.c:75:6:MPC	56	static
