@@ -34,6 +34,18 @@
                                      "Middlewares",
                                      "Drivers"
                                  ],
+    "stm32.project.excludeSourceGlobs":  [
+                                             "Core/Src/main1.c",
+                                             "Core/Src/platform/dma.c",
+                                             "Core/Src/platform/gpio.c",
+                                             "Core/Src/platform/i2c.c",
+                                             "Core/Src/platform/spi.c",
+                                             "Core/Src/platform/stm32f4xx_hal_msp.c",
+                                             "Core/Src/platform/stm32f4xx_it.c",
+                                             "Core/Src/platform/system_stm32f4xx.c",
+                                             "Core/Src/platform/tim.c",
+                                             "Core/Src/platform/usart.c"
+                                 ],
     "stm32.project.includeDirs":  [
                                       "Core/Inc",
                                       "Drivers/STM32F4xx_HAL_Driver/Inc",

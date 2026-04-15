@@ -1,6 +1,10 @@
 Core/Src/control/flight_control.o: ../Core/Src/control/flight_control.c \
- ../Core/Inc/control/flight_control.h ../Core/Inc/platform/tim.h \
- ../Core/Inc/main.h ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h \
+ ../Core/Inc/control/flight_control.h \
+ ../Middlewares/ST/ARM/DSP/Inc/arm_math.h \
+ ../Drivers/CMSIS/Include/cmsis_compiler.h \
+ ../Drivers/CMSIS/Include/cmsis_gcc.h ../Core/Inc/input/rc_input.h \
+ ../Core/Inc/usart.h ../Core/Inc/main.h \
+ ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h \
  ../Core/Inc/stm32f4xx_hal_conf.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rcc.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_def.h \
@@ -9,7 +13,6 @@ Core/Src/control/flight_control.o: ../Core/Src/control/flight_control.c \
  ../Drivers/CMSIS/Include/core_cm4.h \
  ../Drivers/CMSIS/Include/cmsis_version.h \
  ../Drivers/CMSIS/Include/cmsis_compiler.h \
- ../Drivers/CMSIS/Include/cmsis_gcc.h \
  ../Drivers/CMSIS/Include/mpu_armv7.h \
  ../Drivers/CMSIS/Device/ST/STM32F4xx/Include/system_stm32f4xx.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy/stm32_hal_legacy.h \
@@ -31,13 +34,16 @@ Core/Src/control/flight_control.o: ../Core/Src/control/flight_control.c \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h \
+ ../Core/Inc/platform/tim.h ../Core/Inc/main.h \
  ../Core/Inc/sensor/sensor_common.h ../Core/Inc/control/pid.h \
- ../Middlewares/ST/ARM/DSP/Inc/arm_math.h \
- ../Drivers/CMSIS/Include/cmsis_compiler.h \
  ../Core/Inc/sensor/complementary_filter.h \
- ../Core/Inc/sensor/mag_calibration.h
+ ../Core/Inc/sensor/mag_calibration.h ../Core/Inc/sensor/sensor_check.h
 ../Core/Inc/control/flight_control.h:
-../Core/Inc/platform/tim.h:
+../Middlewares/ST/ARM/DSP/Inc/arm_math.h:
+../Drivers/CMSIS/Include/cmsis_compiler.h:
+../Drivers/CMSIS/Include/cmsis_gcc.h:
+../Core/Inc/input/rc_input.h:
+../Core/Inc/usart.h:
 ../Core/Inc/main.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h:
 ../Core/Inc/stm32f4xx_hal_conf.h:
@@ -48,7 +54,6 @@ Core/Src/control/flight_control.o: ../Core/Src/control/flight_control.c \
 ../Drivers/CMSIS/Include/core_cm4.h:
 ../Drivers/CMSIS/Include/cmsis_version.h:
 ../Drivers/CMSIS/Include/cmsis_compiler.h:
-../Drivers/CMSIS/Include/cmsis_gcc.h:
 ../Drivers/CMSIS/Include/mpu_armv7.h:
 ../Drivers/CMSIS/Device/ST/STM32F4xx/Include/system_stm32f4xx.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy/stm32_hal_legacy.h:
@@ -70,9 +75,10 @@ Core/Src/control/flight_control.o: ../Core/Src/control/flight_control.c \
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h:
+../Core/Inc/platform/tim.h:
+../Core/Inc/main.h:
 ../Core/Inc/sensor/sensor_common.h:
 ../Core/Inc/control/pid.h:
-../Middlewares/ST/ARM/DSP/Inc/arm_math.h:
-../Drivers/CMSIS/Include/cmsis_compiler.h:
 ../Core/Inc/sensor/complementary_filter.h:
 ../Core/Inc/sensor/mag_calibration.h:
+../Core/Inc/sensor/sensor_check.h:

@@ -5,24 +5,39 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
+../Core/Src/sensor/bmp280_sensor.c \
 ../Core/Src/sensor/complementary_filter.c \
+../Core/Src/sensor/gps.c \
+../Core/Src/sensor/gps_kalman.c \
 ../Core/Src/sensor/imu_config.c \
 ../Core/Src/sensor/mag_calibration.c \
 ../Core/Src/sensor/magnetometer_sensor.c \
+../Core/Src/sensor/mahony.c \
+../Core/Src/sensor/sensor_check.c \
 ../Core/Src/sensor/sensor_common.c 
 
 OBJS += \
+./Core/Src/sensor/bmp280_sensor.o \
 ./Core/Src/sensor/complementary_filter.o \
+./Core/Src/sensor/gps.o \
+./Core/Src/sensor/gps_kalman.o \
 ./Core/Src/sensor/imu_config.o \
 ./Core/Src/sensor/mag_calibration.o \
 ./Core/Src/sensor/magnetometer_sensor.o \
+./Core/Src/sensor/mahony.o \
+./Core/Src/sensor/sensor_check.o \
 ./Core/Src/sensor/sensor_common.o 
 
 C_DEPS += \
+./Core/Src/sensor/bmp280_sensor.d \
 ./Core/Src/sensor/complementary_filter.d \
+./Core/Src/sensor/gps.d \
+./Core/Src/sensor/gps_kalman.d \
 ./Core/Src/sensor/imu_config.d \
 ./Core/Src/sensor/mag_calibration.d \
 ./Core/Src/sensor/magnetometer_sensor.d \
+./Core/Src/sensor/mahony.d \
+./Core/Src/sensor/sensor_check.d \
 ./Core/Src/sensor/sensor_common.d 
 
 
@@ -33,7 +48,7 @@ Core/Src/sensor/%.o Core/Src/sensor/%.su Core/Src/sensor/%.cyclo: ../Core/Src/se
 clean: clean-Core-2f-Src-2f-sensor
 
 clean-Core-2f-Src-2f-sensor:
-	-$(RM) ./Core/Src/sensor/complementary_filter.cyclo ./Core/Src/sensor/complementary_filter.d ./Core/Src/sensor/complementary_filter.o ./Core/Src/sensor/complementary_filter.su ./Core/Src/sensor/imu_config.cyclo ./Core/Src/sensor/imu_config.d ./Core/Src/sensor/imu_config.o ./Core/Src/sensor/imu_config.su ./Core/Src/sensor/mag_calibration.cyclo ./Core/Src/sensor/mag_calibration.d ./Core/Src/sensor/mag_calibration.o ./Core/Src/sensor/mag_calibration.su ./Core/Src/sensor/magnetometer_sensor.cyclo ./Core/Src/sensor/magnetometer_sensor.d ./Core/Src/sensor/magnetometer_sensor.o ./Core/Src/sensor/magnetometer_sensor.su ./Core/Src/sensor/sensor_common.cyclo ./Core/Src/sensor/sensor_common.d ./Core/Src/sensor/sensor_common.o ./Core/Src/sensor/sensor_common.su
+	-$(RM) ./Core/Src/sensor/bmp280_sensor.cyclo ./Core/Src/sensor/bmp280_sensor.d ./Core/Src/sensor/bmp280_sensor.o ./Core/Src/sensor/bmp280_sensor.su ./Core/Src/sensor/complementary_filter.cyclo ./Core/Src/sensor/complementary_filter.d ./Core/Src/sensor/complementary_filter.o ./Core/Src/sensor/complementary_filter.su ./Core/Src/sensor/gps.cyclo ./Core/Src/sensor/gps.d ./Core/Src/sensor/gps.o ./Core/Src/sensor/gps.su ./Core/Src/sensor/gps_kalman.cyclo ./Core/Src/sensor/gps_kalman.d ./Core/Src/sensor/gps_kalman.o ./Core/Src/sensor/gps_kalman.su ./Core/Src/sensor/imu_config.cyclo ./Core/Src/sensor/imu_config.d ./Core/Src/sensor/imu_config.o ./Core/Src/sensor/imu_config.su ./Core/Src/sensor/mag_calibration.cyclo ./Core/Src/sensor/mag_calibration.d ./Core/Src/sensor/mag_calibration.o ./Core/Src/sensor/mag_calibration.su ./Core/Src/sensor/magnetometer_sensor.cyclo ./Core/Src/sensor/magnetometer_sensor.d ./Core/Src/sensor/magnetometer_sensor.o ./Core/Src/sensor/magnetometer_sensor.su ./Core/Src/sensor/mahony.cyclo ./Core/Src/sensor/mahony.d ./Core/Src/sensor/mahony.o ./Core/Src/sensor/mahony.su ./Core/Src/sensor/sensor_check.cyclo ./Core/Src/sensor/sensor_check.d ./Core/Src/sensor/sensor_check.o ./Core/Src/sensor/sensor_check.su ./Core/Src/sensor/sensor_common.cyclo ./Core/Src/sensor/sensor_common.d ./Core/Src/sensor/sensor_common.o ./Core/Src/sensor/sensor_common.su
 
 .PHONY: clean-Core-2f-Src-2f-sensor
 

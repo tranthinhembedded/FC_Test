@@ -6,6 +6,8 @@
 void ICM20602_Init(void);
 void ICM20602_Calibrate(void);
 uint8_t ICM20602_IsReady(void);
+uint8_t ICM20602_GetWhoAmI(void);
+uint8_t ICM20602_GetLastReadOk(void);
 void IMU_PROCESS(void);
 
 #endif /* CORE_APP_SENSORS_IMU_IMU_SENSOR_H_ */

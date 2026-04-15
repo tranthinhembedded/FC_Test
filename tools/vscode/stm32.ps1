@@ -144,6 +144,7 @@ function Get-SourceFiles {
     )
 
     $sources = New-Object System.Collections.Generic.List[string]
+    $excludePatterns = Get-SettingArray -Settings $Settings -Name 'stm32.project.excludeSourceGlobs'
     foreach ($sourceDir in Get-SettingArray -Settings $Settings -Name 'stm32.project.sourceDirs') {
         $resolved = Resolve-ProjectPath -ProjectRoot $ProjectRoot -PathValue $sourceDir
         if ([string]::IsNullOrWhiteSpace($resolved) -or -not (Test-Path -LiteralPath $resolved)) {
@@ -151,7 +152,19 @@ function Get-SourceFiles {
         }
 
         Get-ChildItem -Path $resolved -Filter '*.c' -File -Recurse | ForEach-Object {
-            $sources.Add($_.FullName)
+            $relative = Get-RelativePath -BasePath $ProjectRoot -TargetPath $_.FullName
+            $isExcluded = $false
+            foreach ($pattern in $excludePatterns) {
+                $normalizedPattern = $pattern.Replace('\', '/')
+                if ($relative -like $normalizedPattern) {
+                    $isExcluded = $true
+                    break
+                }
+            }
+
+            if (-not $isExcluded) {
+                $sources.Add($_.FullName)
+            }
         }
     }
 

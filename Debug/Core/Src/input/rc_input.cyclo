@@ -1,1 +1,6 @@
-../Core/Src/input/rc_input.c:5:6:RcReceiver_Init	1
+../Core/Src/input/rc_input.c:24:13:RcReceiver_ApplyFailsafeValues	1
+../Core/Src/input/rc_input.c:34:6:RcReceiver_Init	1
+../Core/Src/input/rc_input.c:51:13:Process_iBUS_Byte	8
+../Core/Src/input/rc_input.c:96:6:RcReceiver_Process_DMA_Ring_Buffer	6
+../Core/Src/input/rc_input.c:120:6:RcReceiver_UpdateLinkStatus	4
+../Core/Src/input/rc_input.c:135:6:RcReceiver_HandleUartError	2

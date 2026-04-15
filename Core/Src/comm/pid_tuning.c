@@ -1,5 +1,6 @@
 #include "comm/pid_tuning.h"
 
+#include "control/flight_control.h"
 #include "platform/gpio.h"
 #include "platform/usart.h"
 #include "sensor/sensor_common.h"
@@ -82,6 +83,35 @@ static void ProcessLine(char *line)
                     }
                 }
             }
+        } else if (tok && strcmp(tok, "OFLOW") == 0) {
+            char *s_vx = strtok(NULL, ":");
+            char *s_vy = strtok(NULL, ":");
+            char *s_alt = strtok(NULL, ":");
+            char *s_q = strtok(NULL, ":");
+            char *s_dt = strtok(NULL, ":");
+
+            if (s_vx && s_vy && s_alt && s_q && s_dt) {
+                float vx = strtof(s_vx, NULL);
+                float vy = strtof(s_vy, NULL);
+                float alt = strtof(s_alt, NULL);
+                float quality = strtof(s_q, NULL);
+                float dt = strtof(s_dt, NULL);
+
+                FlightController_UpdateOpticalFlowVelocity(vx, vy, alt, quality, dt);
+                HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+
+                if (huart1.gState == HAL_UART_STATE_READY) {
+                    char ack[80];
+                    int len = snprintf(ack, sizeof(ack), "MSG:OFLOW Vx=%.2f Vy=%.2f Q=%.2f\n", vx, vy, quality);
+
+                    if (len > 0) {
+                        HAL_UART_Transmit(&huart1, (uint8_t *)ack, (uint16_t)len, 10);
+                    }
+                }
+            }
+        } else if (tok && strcmp(tok, "OFRESET") == 0) {
+            FlightController_ResetOpticalFlowHold();
+            HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
         }
     }
 }
@@ -130,7 +160,7 @@ void PidTuning_ProcessPendingCommand(void)
     }
 }
 
-void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+void PidTuning_HandleRxEvent(UART_HandleTypeDef *huart, uint16_t Size)
 {
     if (huart->Instance == USART1) {
         uint16_t i;
@@ -142,7 +172,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     }
 }
 
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+void PidTuning_HandleUartError(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART1) {
         volatile uint32_t temp;

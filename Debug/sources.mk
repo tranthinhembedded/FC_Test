@@ -24,8 +24,8 @@ C_DEPS :=
 SUBDIRS := \
 Core/Src/comm \
 Core/Src/control \
-Core/Src/input \
 Core/Src \
+Core/Src/input \
 Core/Src/platform \
 Core/Src/sensor \
 Core/Startup \

@@ -22,21 +22,23 @@
 #define ICM20602_ACCEL_SENSITIVITY  16384.0f
 #define ICM20602_GRAVITY_EARTH      9.80665f
 #define ICM20602_CALIB_SAMPLES      1000U
-#define ICM20602_SPI_TIMEOUT_MS     20U
+#define ICM20602_SPI_TIMEOUT_MS      2U
 #define ICM20602_BURST_LENGTH       14U
 
 /*
  * Adjust these signs if the breakout is mounted with a different
  * orientation on the airframe.
  */
-#define ICM20602_ACCEL_SIGN_X       (1.0f)
-#define ICM20602_ACCEL_SIGN_Y       (-1.0f)
+#define ICM20602_ACCEL_SIGN_X       (1.0f)  /* Pitch (Drone X axis) */
+#define ICM20602_ACCEL_SIGN_Y       (1.0f)  /* Roll (Drone Y axis) */
 #define ICM20602_ACCEL_SIGN_Z       (-1.0f)
-#define ICM20602_GYRO_SIGN_X        (1.0f)
+#define ICM20602_GYRO_SIGN_X        (-1.0f)
 #define ICM20602_GYRO_SIGN_Y        (-1.0f)
 #define ICM20602_GYRO_SIGN_Z        (-1.0f)
 
 static uint8_t s_icm20602_ready = 0U;
+static uint8_t s_icm20602_who_am_i = 0U;
+static uint8_t s_icm20602_last_read_ok = 0U;
 
 static void ICM20602_Select(void)
 {
@@ -101,11 +103,13 @@ static void ICM20602_ParseMotionFrame(uint8_t *buffer)
     static uint8_t acc_lpf_inited = 0U;
     static uint8_t gyro_lpf_inited = 0U;
 
-    raw_acc[0] = (int16_t)(buffer[0] << 8 | buffer[1]);
-    raw_acc[1] = (int16_t)(buffer[2] << 8 | buffer[3]);
+    /* Sensor was rotated 90 degrees on the drone: Swap X (buffer 0/1) and Y (buffer 2/3) */
+    raw_acc[1] = (int16_t)(buffer[0] << 8 | buffer[1]); /* IMU X -> Drone Y (Pitch) */
+    raw_acc[0] = (int16_t)(buffer[2] << 8 | buffer[3]); /* IMU Y -> Drone X (Roll) */
     raw_acc[2] = (int16_t)(buffer[4] << 8 | buffer[5]);
-    raw_gyro[0] = (int16_t)(buffer[8] << 8 | buffer[9]);
-    raw_gyro[1] = (int16_t)(buffer[10] << 8 | buffer[11]);
+    
+    raw_gyro[1] = (int16_t)(buffer[8] << 8 | buffer[9]);   /* IMU X -> Drone Y (Pitch) */
+    raw_gyro[0] = (int16_t)(buffer[10] << 8 | buffer[11]); /* IMU Y -> Drone X (Roll) */
     raw_gyro[2] = (int16_t)(buffer[12] << 8 | buffer[13]);
 
     if (is_calibrated) {
@@ -307,6 +311,8 @@ void ICM20602_Init(void)
     uint8_t who_am_i = 0U;
 
     s_icm20602_ready = 0U;
+    s_icm20602_who_am_i = 0U;
+    s_icm20602_last_read_ok = 0U;
     is_calibrated = 0U;
 
     ICM20602_Deselect();
@@ -351,6 +357,7 @@ void ICM20602_Init(void)
         return;
     }
 
+    s_icm20602_who_am_i = who_am_i;
     if (who_am_i == ICM20602_WHO_AM_I_VALUE) {
         s_icm20602_ready = 1U;
     }
@@ -360,6 +367,7 @@ void ICM20602_Calibrate(void)
 {
     uint8_t buffer[ICM20602_BURST_LENGTH];
     int32_t sum_gyro[3] = {0};
+    int32_t sum_acc[3] = {0};
     uint32_t valid_samples = 0U;
     uint32_t i;
 
@@ -369,8 +377,13 @@ void ICM20602_Calibrate(void)
 
     for (i = 0U; i < ICM20602_CALIB_SAMPLES; i++) {
         if (ICM20602_ReadRegisters(ICM20602_REG_ACCEL_XOUT_H, buffer, ICM20602_BURST_LENGTH) == HAL_OK) {
-            sum_gyro[0] += (int16_t)(buffer[8] << 8 | buffer[9]);
-            sum_gyro[1] += (int16_t)(buffer[10] << 8 | buffer[11]);
+            /* Swap X and Y here as well so the bias matches the swapped Drone frame */
+            sum_acc[1] += (int16_t)(buffer[0] << 8 | buffer[1]); /* IMU X -> Drone Y */
+            sum_acc[0] += (int16_t)(buffer[2] << 8 | buffer[3]); /* IMU Y -> Drone X */
+            sum_acc[2] += (int16_t)(buffer[4] << 8 | buffer[5]);
+            
+            sum_gyro[1] += (int16_t)(buffer[8] << 8 | buffer[9]);   /* IMU X -> Drone Y */
+            sum_gyro[0] += (int16_t)(buffer[10] << 8 | buffer[11]); /* IMU Y -> Drone X */
             sum_gyro[2] += (int16_t)(buffer[12] << 8 | buffer[13]);
             valid_samples++;
         }
@@ -386,12 +399,11 @@ void ICM20602_Calibrate(void)
     gyro_bias[2] = (float32_t)sum_gyro[2] / (float32_t)valid_samples;
 
     /*
-     * For tilt bring-up, do not zero the accelerometer here.
-     * If startup happens while the board is already tilted, subtracting
-     * the averaged accel sample would incorrectly cancel gravity on X/Y.
+     * Auto Level: Khử sai số tĩnh của cảm biến gia tốc để ép Roll/Pitch về 0 khi cấp nguồn.
+     * Chú ý: Chỉ Reset trục X và Y. Phải giữ nguyên trục Z để không làm mất vector trọng lực (1G).
      */
-    accel_bias[0] = 0.0f;
-    accel_bias[1] = 0.0f;
+    accel_bias[0] = (float32_t)sum_acc[0] / (float32_t)valid_samples;
+    accel_bias[1] = (float32_t)sum_acc[1] / (float32_t)valid_samples;
     accel_bias[2] = 0.0f;
 
     is_calibrated = 1U;
@@ -402,15 +414,29 @@ uint8_t ICM20602_IsReady(void)
     return s_icm20602_ready;
 }
 
+uint8_t ICM20602_GetWhoAmI(void)
+{
+    return s_icm20602_who_am_i;
+}
+
+uint8_t ICM20602_GetLastReadOk(void)
+{
+    return s_icm20602_last_read_ok;
+}
+
 void IMU_PROCESS(void)
 {
     uint8_t buffer[ICM20602_BURST_LENGTH];
 
     if (!s_icm20602_ready) {
+        s_icm20602_last_read_ok = 0U;
         return;
     }
 
     if (ICM20602_ReadRegisters(ICM20602_REG_ACCEL_XOUT_H, buffer, ICM20602_BURST_LENGTH) == HAL_OK) {
+        s_icm20602_last_read_ok = 1U;
         ICM20602_ParseMotionFrame(buffer);
+    } else {
+        s_icm20602_last_read_ok = 0U;
     }
 }

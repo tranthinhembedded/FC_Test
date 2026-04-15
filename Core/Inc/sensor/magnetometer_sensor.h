@@ -1,7 +1,12 @@
 #ifndef CORE_APP_SENSORS_MAGNETOMETER_MAGNETOMETER_SENSOR_H_
 #define CORE_APP_SENSORS_MAGNETOMETER_MAGNETOMETER_SENSOR_H_
 
+#include <stdint.h>
+
 void HMC5883L_Init(void);
+uint8_t HMC5883L_IsReady(void);
+void HMC5883L_GetId(uint8_t id_out[3]);
+uint8_t HMC5883L_GetLastReadOk(void);
 void COMPASS_PROCESS(void);
 
 #endif /* CORE_APP_SENSORS_MAGNETOMETER_MAGNETOMETER_SENSOR_H_ */

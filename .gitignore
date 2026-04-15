@@ -1,0 +1,24 @@
+# Build outputs
+Debug/
+Release/
+build/
+
+# Object and dependency files
+*.o
+*.d
+*.su
+*.cyclo
+
+# Executable and map files
+*.elf
+*.hex
+*.bin
+*.map
+*.list
+
+# IDE specific
+
+# Other temporary files
+*.tmp
+*.bak
+*.swp

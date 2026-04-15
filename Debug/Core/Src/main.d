@@ -30,15 +30,17 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h \
- ../Core/Inc/platform/dma.h ../Core/Inc/platform/delay.h \
- ../Core/Inc/platform/gpio.h ../Core/Inc/platform/i2c.h \
- ../Core/Inc/platform/spi.h ../Core/Inc/platform/tim.h \
- ../Core/Inc/platform/usart.h ../Core/Inc/sensor/complementary_filter.h \
+ ../Core/Inc/dma.h ../Core/Inc/main.h ../Core/Inc/i2c.h ../Core/Inc/spi.h \
+ ../Core/Inc/tim.h ../Core/Inc/usart.h ../Core/Inc/gpio.h \
+ ../Core/Inc/sensor/imu_config.h ../Core/Inc/sensor/sensor_check.h \
+ ../Core/Inc/sensor/sensor_common.h ../Core/Inc/control/pid.h \
  ../Middlewares/ST/ARM/DSP/Inc/arm_math.h \
  ../Drivers/CMSIS/Include/cmsis_compiler.h \
- ../Core/Inc/sensor/imu_config.h ../Core/Inc/sensor/magnetometer_sensor.h \
- ../Core/Inc/sensor/sensor_common.h ../Core/Inc/control/pid.h \
- ../Core/Inc/sensor/mag_calibration.h
+ ../Core/Inc/sensor/complementary_filter.h \
+ ../Core/Inc/sensor/mag_calibration.h ../Core/Inc/sensor/mahony.h \
+ ../Core/Inc/sensor/magnetometer_sensor.h \
+ ../Core/Inc/control/flight_control.h ../Core/Inc/input/rc_input.h \
+ ../Core/Inc/comm/pid_tuning.h ../Core/Inc/comm/telemetry.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h:
 ../Core/Inc/stm32f4xx_hal_conf.h:
@@ -71,18 +73,24 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h:
-../Core/Inc/platform/dma.h:
-../Core/Inc/platform/delay.h:
-../Core/Inc/platform/gpio.h:
-../Core/Inc/platform/i2c.h:
-../Core/Inc/platform/spi.h:
-../Core/Inc/platform/tim.h:
-../Core/Inc/platform/usart.h:
-../Core/Inc/sensor/complementary_filter.h:
-../Middlewares/ST/ARM/DSP/Inc/arm_math.h:
-../Drivers/CMSIS/Include/cmsis_compiler.h:
+../Core/Inc/dma.h:
+../Core/Inc/main.h:
+../Core/Inc/i2c.h:
+../Core/Inc/spi.h:
+../Core/Inc/tim.h:
+../Core/Inc/usart.h:
+../Core/Inc/gpio.h:
 ../Core/Inc/sensor/imu_config.h:
-../Core/Inc/sensor/magnetometer_sensor.h:
+../Core/Inc/sensor/sensor_check.h:
 ../Core/Inc/sensor/sensor_common.h:
 ../Core/Inc/control/pid.h:
+../Middlewares/ST/ARM/DSP/Inc/arm_math.h:
+../Drivers/CMSIS/Include/cmsis_compiler.h:
+../Core/Inc/sensor/complementary_filter.h:
 ../Core/Inc/sensor/mag_calibration.h:
+../Core/Inc/sensor/mahony.h:
+../Core/Inc/sensor/magnetometer_sensor.h:
+../Core/Inc/control/flight_control.h:
+../Core/Inc/input/rc_input.h:
+../Core/Inc/comm/pid_tuning.h:
+../Core/Inc/comm/telemetry.h:
