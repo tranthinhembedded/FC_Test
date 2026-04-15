@@ -16,7 +16,8 @@ build/
 *.map
 *.list
 
-# IDE specific
+# Compiled IntelliSense DB
+compile_commands.json
 
 # Other temporary files
 *.tmp

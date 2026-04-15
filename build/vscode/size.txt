@@ -1,2 +1,0 @@
-   text	   data	    bss	    dec	    hex	filename
-  71220	   1248	   4240	  76708	  12ba4	C:\Users\dthinh\Documents\02_Study\Master_Degree\TKNUD\Thesis\code\FlightController\Drone\Test\build\vscode\FC_F411.elf
