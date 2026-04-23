@@ -5,7 +5,7 @@
   * Updated         : Adapted from legacy monolithic main.c
   *                   - RC: iBUS via USART2 DMA (RcReceiver module)
   *                   - IMU: ICM20602 via SPI1 (imu_config module)
-  *                   - MAG: HMC5883L via I2C1 (magnetometer_sensor module)
+  *                   - MAG: HMC5883L/QMC5883L via I2C1 (magnetometer_sensor module)
   *                   - PID Tuning: USART1 DMA (pid_tuning module)
   *                   - Telemetry: USART1 (telemetry module)
   *                   - Control: 1kHz loop, Angle / Rate mode switching
@@ -13,12 +13,12 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "dma.h"
-#include "i2c.h"
-#include "spi.h"
-#include "tim.h"
-#include "usart.h"
-#include "gpio.h"
+#include "platform/dma.h"
+#include "platform/i2c.h"
+#include "platform/spi.h"
+#include "platform/tim.h"
+#include "platform/usart.h"
+#include "platform/gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -26,7 +26,6 @@
 #include "sensor/sensor_check.h"
 #include "sensor/sensor_common.h"
 #include "sensor/complementary_filter.h"
-#include "sensor/mahony.h"
 #include "sensor/magnetometer_sensor.h"
 #include "control/flight_control.h"
 #include "input/rc_input.h"
@@ -45,8 +44,6 @@
 #define MAIN_LOOP_DT_RESYNC_THRESHOLD  10000U  /* >10 ms → clamp dt */
 #define TELEMETRY_PERIOD_MS            100U    /* 10 Hz telemetry */
 #define MAG_UPDATE_DIV                 20U     /* 50 Hz magnetometer update */
-#define MAHONY_KP                      2.5f
-#define MAHONY_KI                      0.02f
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -90,7 +87,6 @@ volatile uint32_t loop_overrun_count = 0U;
 
 /* --- System ready flag --- */
 volatile uint8_t fc_preflight_ready = 0U;
-static MahonyAHRS_t MahonyFilter;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -173,8 +169,6 @@ int main(void)
 
   /* Reset filter & PIDs */
   Complimentary_Filter_Reset(&Complimentary_Filter);
-  MahonyAHRS_Reset(&MahonyFilter);
-  MahonyAHRS_SetGains(&MahonyFilter, MAHONY_KP, MAHONY_KI);
   RESET_ALL_PID();
 
   /* PID tuning UART (USART1) */
@@ -251,17 +245,17 @@ int main(void)
       IMU_PROCESS();
       icm20602_last_read_ok = ICM20602_GetLastReadOk();
 
-      /* Magnetometer: read at 50 Hz while the Mahony filter keeps 1 kHz IMU updates */
+      Complimentary_Filter_Predict(&Complimentary_Filter, &MPU6500_DATA);
+
+      /* Magnetometer: read at 50 Hz and correct complementary-filter yaw drift */
       mag_div++;
       if (mag_div >= MAG_UPDATE_DIV) {
         mag_div = 0U;
         COMPASS_PROCESS();
+        if (HMC5883L_GetLastReadOk() != 0U) {
+          Complimentary_Filter_Update(&Complimentary_Filter, &HMC5883L_DATA);
+        }
       }
-      MahonyAHRS_Update(&MahonyFilter,
-          &MPU6500_DATA,
-          &HMC5883L_DATA,
-          (uint8_t)((mag_div == 0U) && (HMC5883L_GetLastReadOk() != 0U)),
-          &Complimentary_Filter);
 
       /* Aggregate sensor health flag used by MPC arming logic */
       runtime_sensors_ok = (uint8_t)(

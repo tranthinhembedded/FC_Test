@@ -2,7 +2,7 @@
 #define CORE_APP_RC_RECEIVER_RECEIVER_H_
 
 #include <stdint.h>
-#include "usart.h"
+#include "platform/usart.h"
 
 extern volatile uint32_t rc_last_frame_tick_ms;
 extern volatile uint32_t rc_valid_frame_count;

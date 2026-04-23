@@ -81,7 +81,7 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry excluding="Src/main1.c|Src/platform/dma.c|Src/platform/gpio.c|Src/platform/i2c.c|Src/platform/spi.c|Src/platform/stm32f4xx_hal_msp.c|Src/platform/stm32f4xx_it.c|Src/platform/system_stm32f4xx.c|Src/platform/tim.c|Src/platform/usart.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
+						<entry excluding="Src/main1.c|Src/dma.c|Src/gpio.c|Src/i2c.c|Src/spi.c|Src/stm32f4xx_hal_msp.c|Src/stm32f4xx_it.c|Src/system_stm32f4xx.c|Src/tim.c|Src/usart.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Middlewares"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>
 					</sourceEntries>
@@ -165,7 +165,7 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry excluding="Src/main1.c|Src/platform/dma.c|Src/platform/gpio.c|Src/platform/i2c.c|Src/platform/spi.c|Src/platform/stm32f4xx_hal_msp.c|Src/platform/stm32f4xx_it.c|Src/platform/system_stm32f4xx.c|Src/platform/tim.c|Src/platform/usart.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
+						<entry excluding="Src/main1.c|Src/dma.c|Src/gpio.c|Src/i2c.c|Src/spi.c|Src/stm32f4xx_hal_msp.c|Src/stm32f4xx_it.c|Src/system_stm32f4xx.c|Src/tim.c|Src/usart.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Middlewares"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>
 					</sourceEntries>

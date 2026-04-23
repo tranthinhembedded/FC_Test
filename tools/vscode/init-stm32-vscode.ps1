@@ -416,6 +416,36 @@ function Get-SourceDirectories {
     return Get-UniqueStrings -Values $normalized
 }
 
+function Get-ExcludedSourceGlobs {
+    param(
+        [System.Xml.XmlNode]$ConfigNode,
+        [string]$ProjectName
+    )
+
+    $patterns = New-Object System.Collections.Generic.List[string]
+    foreach ($entry in $ConfigNode.SelectNodes('./sourceEntries/entry[@kind="sourcePath"]')) {
+        $basePath = Resolve-CubeProjectValue -Value (Get-XmlAttributeValue -Node $entry -AttributeName 'name') -ProjectName $ProjectName
+        $excluding = Get-XmlAttributeValue -Node $entry -AttributeName 'excluding'
+        if ([string]::IsNullOrWhiteSpace($excluding)) {
+            continue
+        }
+
+        foreach ($pattern in $excluding.Split('|')) {
+            if ([string]::IsNullOrWhiteSpace($pattern)) {
+                continue
+            }
+
+            $resolvedPattern = $pattern.Trim().Replace('\', '/')
+            if (-not [string]::IsNullOrWhiteSpace($basePath)) {
+                $resolvedPattern = ($basePath.TrimEnd('/') + '/' + $resolvedPattern.TrimStart('/'))
+            }
+            $patterns.Add($resolvedPattern)
+        }
+    }
+
+    return Get-UniqueStrings -Values $patterns.ToArray()
+}
+
 function Find-StartupFile {
     param(
         [string]$ProjectRoot,
@@ -548,6 +578,7 @@ $sourceDirs = Get-SourceDirectories -ConfigNode $configNode -ProjectName $projec
 if ($sourceDirs.Count -eq 0) {
     $sourceDirs = Get-UniqueStrings -Values @('Core', 'Drivers', 'Middlewares')
 }
+$excludeSourceGlobs = Get-ExcludedSourceGlobs -ConfigNode $configNode -ProjectName $projectName
 
 $librarySearchDirs = Get-XmlListAttributeByXPath -RootNode $configNode -XPath './/tool[contains(@superClass,"tool.c.linker")]/option[contains(@superClass,"tool.c.linker.option.directories")]/listOptionValue' -AttributeName 'value'
 $librarySearchDirs = Get-UniqueStrings -Values ($librarySearchDirs | ForEach-Object { Resolve-CubeProjectValue -Value $_ -ProjectName $projectName })
@@ -598,6 +629,7 @@ $settingsData = [ordered]@{
     'stm32.project.startupFile' = (Get-ProjectRelativePath -ProjectRoot $projectRootPath -PathValue $startupFile)
     'stm32.project.flashAddress' = '0x08000000'
     'stm32.project.sourceDirs' = $sourceDirs
+    'stm32.project.excludeSourceGlobs' = $excludeSourceGlobs
     'stm32.project.includeDirs' = $includeDirs
     'stm32.project.defines' = $defines
     'stm32.project.compilerExtraArgs' = @()

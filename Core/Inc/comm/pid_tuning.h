@@ -1,7 +1,7 @@
 #ifndef CORE_APP_COMMUNICATION_PIDTUNING_PID_TUNING_H_
 #define CORE_APP_COMMUNICATION_PIDTUNING_PID_TUNING_H_
 
-#include "usart.h"
+#include "platform/usart.h"
 
 void PidTuning_Init(void);
 void PidTuning_ProcessPendingCommand(void);
