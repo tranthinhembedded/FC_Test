@@ -20,6 +20,6 @@ void Send_Telemetry(void)
         Complimentary_Filter.Euler_Angle_Deg[2],
         vbat);
     if (len > 0) {
-        HAL_UART_Transmit(&huart1, (uint8_t *)tx_buf, (uint16_t)len, 10);
+        HAL_UART_Transmit_DMA(&huart1, (uint8_t *)tx_buf, (uint16_t)len);
     }
 }

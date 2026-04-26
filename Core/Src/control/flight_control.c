@@ -1,6 +1,7 @@
 #include "control/flight_control.h"
 
 #include "input/rc_input.h"
+#include "platform/system_check.h"
 #include "platform/tim.h"
 #include "sensor/sensor_common.h"
 #include "sensor/sensor_check.h"
@@ -12,6 +13,11 @@
 #define MANUAL_RATE_SCALE_DPS               0.20f
 #define MANUAL_YAW_SPEED_DPS                150.0f
 #define MAX_ANGLE_TARGET_DEG                25.0f
+#define FAILSAFE_LAND_MIN_THROTTLE_US       1120.0f
+#define FAILSAFE_LAND_DESCENT_US_PER_S      80.0f
+#define FAILSAFE_LAND_MIN_HOLD_TIME_S       2.0f
+#define FAILSAFE_LAND_MAX_TIME_S            12.0f
+#define FAILSAFE_CRITICAL_FAULT_MASK        (SYSTEM_SENSOR_FAULT_IMU | SYSTEM_SENSOR_FAULT_FUSION | SYSTEM_SENSOR_FAULT_CALIBRATION)
 #define OPTFLOW_STALE_TIMEOUT_S             0.15f
 #define OPTFLOW_MIN_QUALITY                 0.25f
 #define OPTFLOW_MIN_ALTITUDE_M              0.05f
@@ -43,6 +49,16 @@ static PID_ALTIDUE_t PID_VELHOLD_Y = {
 
 static MPC_Status_t last_MPC_Status = HOVER;
 static uint8_t reset_pid_request = 0;
+volatile uint32_t flight_arm_block_count = 0U;
+volatile uint32_t flight_safety_disarm_count = 0U;
+volatile uint32_t flight_failsafe_enter_count = 0U;
+volatile uint32_t flight_failsafe_recover_count = 0U;
+volatile uint32_t flight_failsafe_reason_mask = 0U;
+volatile float32_t flight_failsafe_throttle_us = 1000.0f;
+volatile float32_t flight_failsafe_elapsed_s = 0.0f;
+volatile uint8_t flight_failsafe_state = FLIGHT_FAILSAFE_INACTIVE;
+
+static float32_t flight_failsafe_min_throttle_time_s = 0.0f;
 
 static float32_t clamp_float(float32_t value, float32_t min_value, float32_t max_value)
 {
@@ -73,6 +89,68 @@ static void reset_optical_flow_controller(void)
     optical_flow_state.correction_deg[0] = 0.0f;
     optical_flow_state.correction_deg[1] = 0.0f;
     optical_flow_state.hold_locked = 0U;
+}
+
+static void FlightController_SetDisarmed(void)
+{
+    ARM_Status = NOT_ARM;
+    enable_motor = 0U;
+    reset_pid_request = 1U;
+    reset_optical_flow_controller();
+}
+
+static void FlightController_ClearFailsafe(void)
+{
+    flight_failsafe_state = FLIGHT_FAILSAFE_INACTIVE;
+    flight_failsafe_reason_mask = 0U;
+    flight_failsafe_elapsed_s = 0.0f;
+    flight_failsafe_min_throttle_time_s = 0.0f;
+    flight_failsafe_throttle_us = 1000.0f;
+}
+
+static void FlightController_EnterFailsafeLanding(uint32_t reason_mask, float32_t entry_throttle_us)
+{
+    if (flight_failsafe_state != FLIGHT_FAILSAFE_LANDING) {
+        flight_failsafe_enter_count++;
+        flight_failsafe_elapsed_s = 0.0f;
+        flight_failsafe_min_throttle_time_s = 0.0f;
+        flight_failsafe_throttle_us = clamp_float(entry_throttle_us, FAILSAFE_LAND_MIN_THROTTLE_US, 2000.0f);
+        angle_desired[0] = 0.0f;
+        angle_desired[1] = 0.0f;
+        angle_desired[2] = Complimentary_Filter.Euler_Angle_Deg[2];
+        reset_pid_request = 1U;
+        reset_optical_flow_controller();
+    }
+
+    flight_failsafe_state = FLIGHT_FAILSAFE_LANDING;
+    flight_failsafe_reason_mask = reason_mask;
+    ARM_Status = ARM;
+    enable_motor = 1U;
+    MPC_Status = HOVER;
+}
+
+static void FlightController_UpdateFailsafeLanding(float32_t dt)
+{
+    flight_failsafe_elapsed_s += dt;
+
+    if (flight_failsafe_throttle_us > FAILSAFE_LAND_MIN_THROTTLE_US) {
+        flight_failsafe_throttle_us -= FAILSAFE_LAND_DESCENT_US_PER_S * dt;
+        if (flight_failsafe_throttle_us < FAILSAFE_LAND_MIN_THROTTLE_US) {
+            flight_failsafe_throttle_us = FAILSAFE_LAND_MIN_THROTTLE_US;
+        }
+        flight_failsafe_min_throttle_time_s = 0.0f;
+    } else {
+        flight_failsafe_min_throttle_time_s += dt;
+    }
+
+    Throttle = flight_failsafe_throttle_us;
+
+    if ((flight_failsafe_elapsed_s >= FAILSAFE_LAND_MAX_TIME_S)
+        || (flight_failsafe_min_throttle_time_s >= FAILSAFE_LAND_MIN_HOLD_TIME_S)) {
+        flight_failsafe_state = FLIGHT_FAILSAFE_LANDED;
+        flight_safety_disarm_count++;
+        FlightController_SetDisarmed();
+    }
 }
 
 static void invalidate_optical_flow_hold(void)
@@ -310,6 +388,12 @@ void MPC(void)
     float32_t stick_pitch;
     float32_t stick_yaw;
     float32_t real_dt = MPU6500_DATA.dt;
+    float32_t previous_throttle = Throttle;
+    uint8_t arm_interlock_ok;
+    uint8_t critical_attitude_ok;
+    uint8_t pilot_requested_disarm;
+    uint8_t failsafe_landing_active = 0U;
+    uint32_t failsafe_reason_mask;
 
     if (real_dt > 0.01f) {
         real_dt = 0.01f;
@@ -328,7 +412,54 @@ void MPC(void)
         Throttle = (float32_t)RC_Raw_Throttle;
     }
 
-    {
+    arm_interlock_ok = (uint8_t)(
+        (fc_preflight_ready != 0U)
+     && (runtime_sensors_ok != 0U)
+     && (rc_link_ok != 0U)
+     && (is_calibrated != 0U)
+     && (Complimentary_Filter.Fusion_OK != 0U));
+
+    critical_attitude_ok = ((system_sensor_fault_mask & FAILSAFE_CRITICAL_FAULT_MASK) == 0U) ? 1U : 0U;
+    pilot_requested_disarm = (uint8_t)((rc_link_ok != 0U) && (RC_Raw_SW_Arm <= 1500U));
+    failsafe_reason_mask = system_sensor_fault_mask;
+    if (rc_link_ok == 0U) {
+        failsafe_reason_mask |= FLIGHT_FAILSAFE_REASON_RC_LOSS;
+    }
+    if (arm_interlock_ok == 0U) {
+        failsafe_reason_mask |= FLIGHT_FAILSAFE_REASON_INTERLOCK;
+    }
+
+    if (((ARM_Status == ARM) || (enable_motor != 0U) || (flight_failsafe_state == FLIGHT_FAILSAFE_LANDING))
+        && (critical_attitude_ok == 0U)) {
+        if (flight_failsafe_state != FLIGHT_FAILSAFE_CRITICAL) {
+            flight_safety_disarm_count++;
+        }
+        flight_failsafe_state = FLIGHT_FAILSAFE_CRITICAL;
+        flight_failsafe_reason_mask = failsafe_reason_mask;
+        FlightController_SetDisarmed();
+    }
+
+    if (flight_failsafe_state == FLIGHT_FAILSAFE_LANDING) {
+        if (pilot_requested_disarm != 0U) {
+            FlightController_ClearFailsafe();
+            FlightController_SetDisarmed();
+        } else if ((arm_interlock_ok != 0U) && (RC_Raw_SW_Arm > 1500U)) {
+            flight_failsafe_recover_count++;
+            FlightController_ClearFailsafe();
+        } else if (ARM_Status == ARM) {
+            FlightController_UpdateFailsafeLanding(real_dt);
+            failsafe_landing_active = 1U;
+        }
+    } else if (((ARM_Status == ARM) || (enable_motor != 0U))
+        && (arm_interlock_ok == 0U)
+        && (critical_attitude_ok != 0U)
+        && (pilot_requested_disarm == 0U)) {
+        FlightController_EnterFailsafeLanding(failsafe_reason_mask, previous_throttle);
+        FlightController_UpdateFailsafeLanding(real_dt);
+        failsafe_landing_active = 1U;
+    }
+
+    if (failsafe_landing_active == 0U) {
         MPC_Status_t current_mode = (RC_Raw_SW_Mode > 1500U) ? HOVER : RATE_MODE;
         if (current_mode != last_MPC_Status) {
             MPC_Status = current_mode;
@@ -338,24 +469,37 @@ void MPC(void)
         }
     }
 
-    if (RC_Raw_SW_Arm > 1500U) {
-        if ((ARM_Status == NOT_ARM) && (Throttle < 1150.0f)) {
-            ARM_Status = ARM;
-            enable_motor = 1U;
-            RESET_ALL_PID();
-            angle_desired[0] = 0.0f;
-            angle_desired[1] = 0.0f;
-            angle_desired[2] = Complimentary_Filter.Euler_Angle_Deg[2];
-            reset_pid_request = 1U;
+    if (failsafe_landing_active == 0U) {
+        if (RC_Raw_SW_Arm > 1500U) {
+            if ((ARM_Status == NOT_ARM) && (Throttle < 1150.0f) && (arm_interlock_ok != 0U)) {
+                FlightController_ClearFailsafe();
+                ARM_Status = ARM;
+                enable_motor = 1U;
+                RESET_ALL_PID();
+                angle_desired[0] = 0.0f;
+                angle_desired[1] = 0.0f;
+                angle_desired[2] = Complimentary_Filter.Euler_Angle_Deg[2];
+                reset_pid_request = 1U;
+            } else if ((ARM_Status == NOT_ARM) && (arm_interlock_ok == 0U)) {
+                flight_arm_block_count++;
+            }
+        } else {
+            if (rc_link_ok != 0U) {
+                FlightController_ClearFailsafe();
+            }
+            FlightController_SetDisarmed();
         }
-    } else {
-        ARM_Status = NOT_ARM;
-        enable_motor = 0U;
     }
 
-    stick_roll = (float32_t)RC_Raw_Roll - 1500.0f;
-    stick_pitch = (float32_t)RC_Raw_Pitch - 1500.0f;
-    stick_yaw = (float32_t)RC_Raw_Yaw - 1500.0f;
+    if (failsafe_landing_active != 0U) {
+        stick_roll = 0.0f;
+        stick_pitch = 0.0f;
+        stick_yaw = 0.0f;
+    } else {
+        stick_roll = (float32_t)RC_Raw_Roll - 1500.0f;
+        stick_pitch = (float32_t)RC_Raw_Pitch - 1500.0f;
+        stick_yaw = (float32_t)RC_Raw_Yaw - 1500.0f;
+    }
 
     if (fabsf(stick_yaw) < 15.0f) {
         stick_yaw = 0.0f;

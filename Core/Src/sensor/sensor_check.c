@@ -103,12 +103,12 @@ volatile uint32_t led_blink_period_ms = 0U;
 
 static uint8_t SensorCheck_IsDeviceReady(I2C_HandleTypeDef *hi2c, uint16_t address)
 {
-    return (HAL_I2C_IsDeviceReady(hi2c, address, 2U, 20U) == HAL_OK) ? 1U : 0U;
+    return I2C_IsDeviceReadyRecover(hi2c, address, 3U, 50U);
 }
 
 static uint8_t SensorCheck_ReadRegister(I2C_HandleTypeDef *hi2c, uint16_t address, uint8_t reg, uint8_t *data, uint16_t len)
 {
-    return (HAL_I2C_Mem_Read(hi2c, address, reg, I2C_MEMADD_SIZE_8BIT, data, len, 50U) == HAL_OK) ? 1U : 0U;
+    return I2C_Mem_ReadRecover(hi2c, address, reg, I2C_MEMADD_SIZE_8BIT, data, len, 50U);
 }
 
 static void SensorCheck_SelectBaroResult(
@@ -224,6 +224,21 @@ static void SensorCheck_ProbeMag(void)
     i2c1_mag_qmc_chip_id = 0U;
     i2c1_mag_qmc_detected = 0U;
 
+    if (i2c1_mag_0d_ready != 0U) {
+        if (SensorCheck_ReadRegister(&hi2c1, SENSOR_CHECK_MAG_QMC_ADDR_8BIT, SENSOR_CHECK_MAG_QMC_REG_ID, &qmc_id, 1U) != 0U) {
+            i2c1_mag_qmc_id_read_ok = 1U;
+            i2c1_mag_qmc_chip_id = qmc_id;
+            i2c1_mag_qmc_detected = 1U;
+            mag_sensor_type = SENSOR_CHECK_MAG_TYPE_QMC5883L;
+            i2c_sensor_bus[SENSOR_CHECK_I2C_SENSOR_MAG_INDEX] = SENSOR_CHECK_I2C_BUS_1;
+            i2c_sensor_addr_7bit[SENSOR_CHECK_I2C_SENSOR_MAG_INDEX] = SENSOR_CHECK_MAG_QMC_ADDR_7BIT;
+            i2c_sensor_addr_8bit[SENSOR_CHECK_I2C_SENSOR_MAG_INDEX] = SENSOR_CHECK_MAG_QMC_ADDR_8BIT;
+            i2c_sensor_ready[SENSOR_CHECK_I2C_SENSOR_MAG_INDEX] = 1U;
+            i2c_sensor_chip_id[SENSOR_CHECK_I2C_SENSOR_MAG_INDEX] = i2c1_mag_qmc_chip_id;
+            return;
+        }
+    }
+
     if (i2c1_mag_1e_ready != 0U) {
         if (SensorCheck_ReadRegister(&hi2c1, SENSOR_CHECK_MAG_HMC_ADDR_8BIT, SENSOR_CHECK_MAG_HMC_REG_ID_A, id, sizeof(id)) != 0U) {
             i2c1_mag_id_a = id[0];
@@ -240,20 +255,6 @@ static void SensorCheck_ProbeMag(void)
                 i2c_sensor_chip_id[SENSOR_CHECK_I2C_SENSOR_MAG_INDEX] = i2c1_mag_id_a;
                 return;
             }
-        }
-    }
-
-    if (i2c1_mag_0d_ready != 0U) {
-        if (SensorCheck_ReadRegister(&hi2c1, SENSOR_CHECK_MAG_QMC_ADDR_8BIT, SENSOR_CHECK_MAG_QMC_REG_ID, &qmc_id, 1U) != 0U) {
-            i2c1_mag_qmc_id_read_ok = 1U;
-            i2c1_mag_qmc_chip_id = qmc_id;
-            i2c1_mag_qmc_detected = 1U;
-            mag_sensor_type = SENSOR_CHECK_MAG_TYPE_QMC5883L;
-            i2c_sensor_bus[SENSOR_CHECK_I2C_SENSOR_MAG_INDEX] = SENSOR_CHECK_I2C_BUS_1;
-            i2c_sensor_addr_7bit[SENSOR_CHECK_I2C_SENSOR_MAG_INDEX] = SENSOR_CHECK_MAG_QMC_ADDR_7BIT;
-            i2c_sensor_addr_8bit[SENSOR_CHECK_I2C_SENSOR_MAG_INDEX] = SENSOR_CHECK_MAG_QMC_ADDR_8BIT;
-            i2c_sensor_ready[SENSOR_CHECK_I2C_SENSOR_MAG_INDEX] = 1U;
-            i2c_sensor_chip_id[SENSOR_CHECK_I2C_SENSOR_MAG_INDEX] = i2c1_mag_qmc_chip_id;
         }
     }
 }
@@ -338,7 +339,7 @@ void SensorCheck_RunStartupProbe(void)
 {
     i2c_probe_count++;
     i2c_last_probe_tick_ms = HAL_GetTick();
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);
 
     SensorCheck_ProbeImu();
     SensorCheck_ProbeMag();
@@ -347,7 +348,7 @@ void SensorCheck_RunStartupProbe(void)
     mag_detected_bus = (i2c_sensor_ready[SENSOR_CHECK_I2C_SENSOR_MAG_INDEX] != 0U) ? 1U : 0U;
     imu_mag_connected = (uint8_t)((icm20602_connected != 0U)
                                && (i2c_sensor_ready[SENSOR_CHECK_I2C_SENSOR_MAG_INDEX] != 0U));
-    all_sensors_connected = imu_mag_connected;
+    all_sensors_connected = (uint8_t)(imu_mag_connected && (i2c_sensor_ready[SENSOR_CHECK_I2C_SENSOR_BARO_INDEX] != 0U));
     runtime_sensors_ok = all_sensors_connected;
     led_blink_period_ms = (all_sensors_connected != 0U) ? SENSOR_CHECK_LED_BLINK_OK_MS : 0U;
 }
@@ -357,12 +358,12 @@ void SensorCheck_UpdateHeartbeat(uint32_t now_ms)
     static uint32_t s_last_led_toggle_ms = 0U;
 
     if (led_blink_period_ms == 0U) {
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);
         return;
     }
 
     if ((uint32_t)(now_ms - s_last_led_toggle_ms) >= led_blink_period_ms) {
         s_last_led_toggle_ms = now_ms;
-        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_12);
     }
 }

@@ -27,10 +27,12 @@
 #include "sensor/sensor_common.h"
 #include "sensor/complementary_filter.h"
 #include "sensor/magnetometer_sensor.h"
+#include "sensor/bmp280_sensor.h"
 #include "control/flight_control.h"
 #include "input/rc_input.h"
 #include "comm/pid_tuning.h"
 #include "comm/telemetry.h"
+#include "platform/system_check.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,9 +43,13 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define MAIN_LOOP_PERIOD_US            1000U   /* 1 kHz control loop */
+#define MAIN_LOOP_OVERRUN_TOLERANCE_US 50U
 #define MAIN_LOOP_DT_RESYNC_THRESHOLD  10000U  /* >10 ms → clamp dt */
+#define MAIN_LOOP_DT_MAX_WINDOW_MS     1000U   /* rolling 1 s max for debugger */
 #define TELEMETRY_PERIOD_MS            100U    /* 10 Hz telemetry */
 #define MAG_UPDATE_DIV                 20U     /* 50 Hz magnetometer update */
+#define BARO_UPDATE_DIV                40U     /* 25 Hz barometer update */
+#define BARO_UPDATE_PHASE_DIV          10U     /* stagger baro away from mag */
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -68,6 +74,7 @@ volatile float Debug_PID_Rate_Roll_Out = 0.0f;
  *   1 = Sensor error or not calibrated
  *   2 = Throttle too high to arm
  *   3 = Arm switch not activated
+ *   4 = RC link lost
  */
 volatile uint8_t Debug_Prearm_Block_Reason = 1U;
 
@@ -84,6 +91,8 @@ uint32_t last_telemetry_time = 0U;
 volatile uint32_t loop_dt_us       = 0U;
 volatile uint32_t loop_dt_max_us   = 0U;
 volatile uint32_t loop_overrun_count = 0U;
+volatile uint32_t loop_exec_us     = 0U;
+volatile uint32_t loop_exec_max_us = 0U;
 
 /* --- System ready flag --- */
 volatile uint8_t fc_preflight_ready = 0U;
@@ -140,32 +149,27 @@ int main(void)
   MX_I2C2_Init();
   MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
+  /* Start ESC idle PWM before long startup delays so the ESCs can finish
+   * their power-up/arming tone sequence reliably.
+   */
+  FlightController_InitMotorOutputs();
+
   /* Startup LED blink (3×) */
   HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13); HAL_Delay(200U);
   HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13); HAL_Delay(200U);
   HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
 
-  /* Probe and record which sensors are physically present */
-  HAL_Delay(50U);
-  SensorCheck_RunStartupProbe();
+  /* System health check initialization (sensor probe + calibration) */
+  SystemCheck_Init();
 
   /* iBUS RC receiver – USART2 DMA ring buffer */
   RcReceiver_Init();
-
-  /* Motor PWM outputs – TIM3 CH1/CH2, TIM4 CH1/CH2 @ 1000 µs idle */
-  FlightController_InitMotorOutputs();
 
   /* µs timebase for the control loop */
   HAL_TIM_Base_Start(&htim2);
 
   /* Magnetometer continuous mode */
-  HMC5883L_Init();
-
-  /* IMU calibration (bias removal) – only when sensor is present */
-  if (all_sensors_connected != 0U) {
-    HAL_Delay(50U);
-    ICM20602_Calibrate();
-  }
+  Magnetometer_Init();
 
   /* Reset filter & PIDs */
   Complimentary_Filter_Reset(&Complimentary_Filter);
@@ -189,6 +193,7 @@ int main(void)
   MPU6500_DATA.timestamp = TIM2->CNT;
 
   uint32_t last_loop_time = TIM2->CNT;
+  uint32_t loop_dt_window_start_ms = HAL_GetTick();
   uint8_t  mag_div        = 0U;
   /* USER CODE END 2 */
 
@@ -201,23 +206,6 @@ int main(void)
 
     /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
-
-    /* Heartbeat LED */
-    SensorCheck_UpdateHeartbeat(now_ms);
-
-    /* iBUS: parse new bytes from DMA ring buffer */
-    RcReceiver_Process_DMA_Ring_Buffer();
-
-    /* PID tuning command parser (USART1) */
-    PidTuning_ProcessPendingCommand();
-
-    /* Telemetry @ 10 Hz */
-    if ((now_ms - last_telemetry_time) >= TELEMETRY_PERIOD_MS) {
-      Send_Telemetry();
-      last_telemetry_time = now_ms;
-    }
-
     /* ================================================================
      * MAIN CONTROL LOOP – 1 kHz
      * ================================================================ */
@@ -225,13 +213,16 @@ int main(void)
       uint32_t dt_us = current_time - last_loop_time;
       last_loop_time = current_time;
 
+      if ((uint32_t)(now_ms - loop_dt_window_start_ms) >= MAIN_LOOP_DT_MAX_WINDOW_MS) {
+        loop_dt_window_start_ms = now_ms;
+        loop_dt_max_us = 0U;
+        loop_exec_max_us = 0U;
+      }
+
       /* Loop timing diagnostics */
       loop_dt_us = dt_us;
-      if (dt_us > loop_dt_max_us) {
+      if ((dt_us <= MAIN_LOOP_DT_RESYNC_THRESHOLD) && (dt_us > loop_dt_max_us)) {
         loop_dt_max_us = dt_us;
-      }
-      if (dt_us > MAIN_LOOP_PERIOD_US) {
-        loop_overrun_count++;
       }
       /* Clamp dt on long stalls (e.g. first iteration) */
       if (dt_us > MAIN_LOOP_DT_RESYNC_THRESHOLD) {
@@ -252,51 +243,61 @@ int main(void)
       if (mag_div >= MAG_UPDATE_DIV) {
         mag_div = 0U;
         COMPASS_PROCESS();
-        if (HMC5883L_GetLastReadOk() != 0U) {
-          Complimentary_Filter_Update(&Complimentary_Filter, &HMC5883L_DATA);
+        if (Magnetometer_GetLastReadOk() != 0U) {
+          Complimentary_Filter_Update(&Complimentary_Filter, &MAG_DATA_INST);
         }
       }
-
-      /* Aggregate sensor health flag used by MPC arming logic */
-      runtime_sensors_ok = (uint8_t)(
-          (icm20602_last_read_ok != 0U)
-       && (HMC5883L_IsReady()         != 0U)
-       && ((HMC5883L_GetLastReadOk()  != 0U) || (mag_div != 0U)));
 
       /* ---------- Flight control (PID + motor mix) ---------- */
       MPC();
 
-      /* ---------- Pre-flight readiness flag ---------- */
-      fc_preflight_ready = (uint8_t)(
-          (runtime_sensors_ok              != 0U)
-       && (rc_link_ok                      != 0U)
-       && (is_calibrated                   != 0U)
-       && (Complimentary_Filter.Fusion_OK  != 0U));
-
-      /* ---------- Live Expressions ---------- */
-      Debug_Roll_Deg  = Complimentary_Filter.Euler_Angle_Deg[0];
-      Debug_Pitch_Deg = Complimentary_Filter.Euler_Angle_Deg[1];
-      Debug_Yaw_Deg   = Complimentary_Filter.Euler_Angle_Deg[2];
-
-      Debug_PID_Roll_Out      = PID_ROLL.output;
-      Debug_PID_Rate_Roll_Out = PID_RATE_ROLL.output;
-
-      /* Pre-arm block reason (for debugger) */
-      if (fc_preflight_ready == 0U) {
-        Debug_Prearm_Block_Reason = 1U; /* Sensor / calibration issue */
-      } else if (RC_Raw_Throttle >= 1150U) {
-        Debug_Prearm_Block_Reason = 2U; /* Lower throttle to arm */
-      } else if (RC_Raw_SW_Arm <= 1500U) {
-        Debug_Prearm_Block_Reason = 3U; /* Arm switch not active */
-      } else {
-        Debug_Prearm_Block_Reason = 0U; /* Ready */
-      }
-
-      /* Motor speed snapshot */
+      /* ---------- Motor speed snapshot ---------- */
       Motor_M2_BR_Speed = (uint16_t)PWM_MOTOR[0];
       Motor_M1_FR_Speed = (uint16_t)PWM_MOTOR[1];
       Motor_M4_FL_Speed = (uint16_t)PWM_MOTOR[2];
       Motor_M3_BL_Speed = (uint16_t)PWM_MOTOR[3];
+
+      /* ================================================================
+       * BACKGROUND TASKS (Low Priority)
+       * Chạy ngay sau khi tính toán 1kHz xong để tận dụng thời gian rảnh
+       * ================================================================ */
+
+      static uint8_t baro_div = BARO_UPDATE_PHASE_DIV;
+      baro_div++;
+      if (baro_div >= BARO_UPDATE_DIV) { /* 1000Hz / 40 = 25Hz */
+          baro_div = 0;
+          BARO_PROCESS();
+      }
+
+      Magnetometer_Service(now_ms);
+      BMP280_Service(now_ms);
+
+      /* System health and heartbeat update */
+      SystemCheck_Update(now_ms, mag_div);
+
+      /* iBUS: parse new bytes from DMA ring buffer */
+      RcReceiver_Process_DMA_Ring_Buffer();
+      RcReceiver_UpdateLinkStatus(now_ms);
+
+      /* PID tuning command parser (USART1) */
+      PidTuning_ProcessPendingCommand();
+
+      /* Telemetry @ 10 Hz */
+      if ((now_ms - last_telemetry_time) >= TELEMETRY_PERIOD_MS) {
+        Send_Telemetry();
+        last_telemetry_time = now_ms;
+      }
+
+      {
+        uint32_t exec_us = TIM2->CNT - current_time;
+        loop_exec_us = exec_us;
+        if ((exec_us <= MAIN_LOOP_DT_RESYNC_THRESHOLD) && (exec_us > loop_exec_max_us)) {
+          loop_exec_max_us = exec_us;
+        }
+        if (exec_us > (MAIN_LOOP_PERIOD_US + MAIN_LOOP_OVERRUN_TOLERANCE_US)) {
+          loop_overrun_count++;
+        }
+      }
     }
   }
   /* USER CODE END 3 */

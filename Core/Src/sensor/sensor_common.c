@@ -1,10 +1,13 @@
 #include "sensor/sensor_common.h"
+#include "sensor/bmp280_sensor.h"
+#include "main.h"
+#include <math.h>
 
 IMU_RAW_DATA_t MPU6500_RAW_DATA;
 IMU_Data_t MPU6500_DATA;
 
-MAG_RAW_DATA_t HMC5883L_RAW_DATA;
-MAG_DATA_t HMC5883L_DATA;
+MAG_RAW_DATA_t MAG_RAW_DATA_INST;
+MAG_DATA_t MAG_DATA_INST;
 
 MagCal_Simple_t MagCal = {
     .S = 1.0f,
@@ -86,3 +89,64 @@ volatile uint32_t RC_Raw_Throttle = 0;
 volatile uint32_t RC_Raw_Yaw = 0;
 volatile uint32_t RC_Raw_SW_Arm = 0;
 volatile uint32_t RC_Raw_SW_Mode = 0;
+
+float32_t Baro_Alt_m = 0.0f;
+float32_t Baro_Pressure_Pa = 0.0f;
+float32_t Ground_Pressure_Pa = 0.0f;
+uint8_t Baro_GroundCalibrated = 0U;
+
+void Baro_Calibrate(void)
+{
+    float p, t;
+    float sum_p = 0.0f;
+    uint32_t valid_samples = 0;
+    
+    if (!BMP280_IsReady()) {
+        Baro_GroundCalibrated = 0U;
+        return;
+    }
+
+    for (int i = 0; i < 50; i++) {
+        if (BMP280_ReadCompensated(&p, &t)) {
+            sum_p += p;
+            valid_samples++;
+        }
+        HAL_Delay(10);
+    }
+    
+    if (valid_samples > 0) {
+        Ground_Pressure_Pa = sum_p / (float)valid_samples;
+        Baro_GroundCalibrated = 1U;
+        Baro_Alt_m = 0.0f;
+    } else {
+        Baro_GroundCalibrated = 0U;
+    }
+}
+
+void BARO_PROCESS(void)
+{
+    float p, t;
+    if (BMP280_ReadCompensated(&p, &t)) {
+        if (Baro_Pressure_Pa == 0.0f) {
+            Baro_Pressure_Pa = p;
+        } else {
+            Baro_Pressure_Pa = Baro_Pressure_Pa * 0.9f + p * 0.1f;
+        }
+
+        if (Baro_GroundCalibrated == 0U) {
+            Ground_Pressure_Pa = Baro_Pressure_Pa;
+            Baro_GroundCalibrated = 1U;
+            Baro_Alt_m = 0.0f;
+            return;
+        }
+
+        if (Ground_Pressure_Pa > 0.0f) {
+            float alt = 44330.0f * (1.0f - powf(Baro_Pressure_Pa / Ground_Pressure_Pa, 0.1903f));
+            if (Baro_Alt_m == 0.0f) {
+                Baro_Alt_m = alt;
+            } else {
+                Baro_Alt_m = Baro_Alt_m * 0.9f + alt * 0.1f;
+            }
+        }
+    }
+}

@@ -18,8 +18,8 @@ typedef enum {
 extern IMU_RAW_DATA_t MPU6500_RAW_DATA;
 extern IMU_Data_t MPU6500_DATA;
 
-extern MAG_RAW_DATA_t HMC5883L_RAW_DATA;
-extern MAG_DATA_t HMC5883L_DATA;
+extern MAG_RAW_DATA_t MAG_RAW_DATA_INST;
+extern MAG_DATA_t MAG_DATA_INST;
 
 extern MagCal_Simple_t MagCal;
 extern Complimentary_Filter_t Complimentary_Filter;
@@ -67,5 +67,13 @@ extern volatile uint32_t RC_Raw_Throttle;
 extern volatile uint32_t RC_Raw_Yaw;
 extern volatile uint32_t RC_Raw_SW_Arm;
 extern volatile uint32_t RC_Raw_SW_Mode;
+
+extern float32_t Baro_Alt_m;
+extern float32_t Baro_Pressure_Pa;
+extern float32_t Ground_Pressure_Pa;
+extern uint8_t Baro_GroundCalibrated;
+
+void Baro_Calibrate(void);
+void BARO_PROCESS(void);
 
 #endif /* CORE_APP_STATE_APPSTATE_APP_STATE_H_ */

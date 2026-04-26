@@ -18,6 +18,25 @@ typedef struct {
     uint8_t hold_locked;
 } FlightController_OpticalFlowState_t;
 
+#define FLIGHT_FAILSAFE_REASON_RC_LOSS      (1UL << 16)
+#define FLIGHT_FAILSAFE_REASON_INTERLOCK    (1UL << 17)
+
+typedef enum {
+    FLIGHT_FAILSAFE_INACTIVE = 0,
+    FLIGHT_FAILSAFE_LANDING,
+    FLIGHT_FAILSAFE_CRITICAL,
+    FLIGHT_FAILSAFE_LANDED
+} FlightFailsafeState_t;
+
+extern volatile uint32_t flight_arm_block_count;
+extern volatile uint32_t flight_safety_disarm_count;
+extern volatile uint32_t flight_failsafe_enter_count;
+extern volatile uint32_t flight_failsafe_recover_count;
+extern volatile uint32_t flight_failsafe_reason_mask;
+extern volatile float32_t flight_failsafe_throttle_us;
+extern volatile float32_t flight_failsafe_elapsed_s;
+extern volatile uint8_t flight_failsafe_state;
+
 void FlightController_InitMotorOutputs(void);
 void RESET_ALL_PID(void);
 void MPC(void);

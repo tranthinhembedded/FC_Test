@@ -6,6 +6,7 @@
 #include "sensor/sensor_common.h"
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -16,7 +17,32 @@ static uint8_t rx_dma_buf[RX_DMA_SIZE];
 static char cmd_work[CMD_LINE_SIZE];
 static uint16_t cmd_len = 0;
 static char cmd_ready[CMD_LINE_SIZE];
+static char tx_ack_buf[96];
 static volatile uint8_t line_ready = 0;
+
+static void UART1_SendAck(const char *fmt, ...)
+{
+    va_list args;
+    int len;
+
+    if (huart1.gState != HAL_UART_STATE_READY) {
+        return;
+    }
+
+    va_start(args, fmt);
+    len = vsnprintf(tx_ack_buf, sizeof(tx_ack_buf), fmt, args);
+    va_end(args);
+
+    if (len <= 0) {
+        return;
+    }
+
+    if (len >= (int)sizeof(tx_ack_buf)) {
+        len = (int)sizeof(tx_ack_buf) - 1;
+    }
+
+    (void)HAL_UART_Transmit_DMA(&huart1, (uint8_t *)tx_ack_buf, (uint16_t)len);
+}
 
 static void UART1_StartRxToIdle_DMA(void)
 {
@@ -74,14 +100,7 @@ static void ProcessLine(char *line)
                     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
                 }
 
-                if (huart1.gState == HAL_UART_STATE_READY) {
-                    char ack[64];
-                    int len = snprintf(ack, sizeof(ack), "MSG:UPDATED %s P=%.3f\n", axis, p);
-
-                    if (len > 0) {
-                        HAL_UART_Transmit(&huart1, (uint8_t *)ack, (uint16_t)len, 10);
-                    }
-                }
+                UART1_SendAck("MSG:UPDATED %s P=%.3f\n", axis, p);
             }
         } else if (tok && strcmp(tok, "OFLOW") == 0) {
             char *s_vx = strtok(NULL, ":");
@@ -100,14 +119,7 @@ static void ProcessLine(char *line)
                 FlightController_UpdateOpticalFlowVelocity(vx, vy, alt, quality, dt);
                 HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
 
-                if (huart1.gState == HAL_UART_STATE_READY) {
-                    char ack[80];
-                    int len = snprintf(ack, sizeof(ack), "MSG:OFLOW Vx=%.2f Vy=%.2f Q=%.2f\n", vx, vy, quality);
-
-                    if (len > 0) {
-                        HAL_UART_Transmit(&huart1, (uint8_t *)ack, (uint16_t)len, 10);
-                    }
-                }
+                UART1_SendAck("MSG:OFLOW Vx=%.2f Vy=%.2f Q=%.2f\n", vx, vy, quality);
             }
         } else if (tok && strcmp(tok, "OFRESET") == 0) {
             FlightController_ResetOpticalFlowHold();
