@@ -36,7 +36,9 @@ extern volatile uint32_t flight_failsafe_reason_mask;
 extern volatile float32_t flight_failsafe_throttle_us;
 extern volatile float32_t flight_failsafe_elapsed_s;
 extern volatile uint8_t flight_failsafe_state;
-
+extern volatile uint8_t flight_optical_arm_ok;
+extern volatile uint8_t flight_optical_required_for_arm;
+extern volatile uint8_t flight_optical_arm_block_reason;
 void FlightController_InitMotorOutputs(void);
 void RESET_ALL_PID(void);
 void MPC(void);

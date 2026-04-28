@@ -67,6 +67,7 @@ extern volatile uint32_t RC_Raw_Throttle;
 extern volatile uint32_t RC_Raw_Yaw;
 extern volatile uint32_t RC_Raw_SW_Arm;
 extern volatile uint32_t RC_Raw_SW_Mode;
+extern volatile uint32_t RC_Raw_SW_PosHold;
 
 extern float32_t Baro_Alt_m;
 extern float32_t Baro_Pressure_Pa;

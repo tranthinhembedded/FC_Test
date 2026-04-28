@@ -1,5 +1,6 @@
 #include "comm/pid_tuning.h"
 
+#include "comm/optical_input.h"
 #include "control/flight_control.h"
 #include "platform/gpio.h"
 #include "platform/usart.h"
@@ -12,16 +13,23 @@
 
 #define RX_DMA_SIZE   256
 #define CMD_LINE_SIZE 128
+#define UART1_ASCII_ACK_ENABLED 0U
 
 static uint8_t rx_dma_buf[RX_DMA_SIZE];
+static uint16_t rx_dma_old_pos = 0U;
 static char cmd_work[CMD_LINE_SIZE];
 static uint16_t cmd_len = 0;
 static char cmd_ready[CMD_LINE_SIZE];
+#if UART1_ASCII_ACK_ENABLED
 static char tx_ack_buf[96];
+#endif
 static volatile uint8_t line_ready = 0;
+
+static void UART_ParseByte_ISR(uint8_t b);
 
 static void UART1_SendAck(const char *fmt, ...)
 {
+#if UART1_ASCII_ACK_ENABLED
     va_list args;
     int len;
 
@@ -42,17 +50,77 @@ static void UART1_SendAck(const char *fmt, ...)
     }
 
     (void)HAL_UART_Transmit_DMA(&huart1, (uint8_t *)tx_ack_buf, (uint16_t)len);
+#else
+    (void)fmt;
+#endif
 }
 
-static void UART1_StartRxToIdle_DMA(void)
+static void UART1_ProcessRxByte(uint8_t byte)
 {
+    if (OpticalInput_FeedByte(byte) == 0U) {
+        UART_ParseByte_ISR(byte);
+    }
+}
+
+static void UART1_StartRxDMA(void)
+{
+    HAL_StatusTypeDef status;
+
     HAL_UART_DMAStop(&huart1);
-    if (HAL_UARTEx_ReceiveToIdle_DMA(&huart1, rx_dma_buf, RX_DMA_SIZE) != HAL_OK) {
+    rx_dma_old_pos = 0U;
+    OpticalInput_OnUartDmaState(0U, 0U);
+
+    status = HAL_UART_Receive_DMA(&huart1, rx_dma_buf, RX_DMA_SIZE);
+    if (status != HAL_OK) {
         HAL_UART_DeInit(&huart1);
         HAL_UART_Init(&huart1);
-        HAL_UARTEx_ReceiveToIdle_DMA(&huart1, rx_dma_buf, RX_DMA_SIZE);
+        status = HAL_UART_Receive_DMA(&huart1, rx_dma_buf, RX_DMA_SIZE);
     }
-    __HAL_DMA_DISABLE_IT(huart1.hdmarx, DMA_IT_HT);
+
+    if (status == HAL_OK) {
+        OpticalInput_OnUartDmaState(0U, 1U);
+        if (huart1.hdmarx != NULL) {
+            __HAL_DMA_DISABLE_IT(huart1.hdmarx, DMA_IT_HT);
+            __HAL_DMA_DISABLE_IT(huart1.hdmarx, DMA_IT_TC);
+        }
+    } else {
+        OpticalInput_OnUartDmaStartError();
+    }
+}
+
+static void UART1_ProcessRxDMA_RingBuffer(void)
+{
+    uint16_t pos;
+    uint16_t i;
+
+    OpticalInput_OnUartRxPinSample((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_10) == GPIO_PIN_SET) ? 1U : 0U);
+
+    if (huart1.hdmarx == NULL) {
+        OpticalInput_OnUartDmaState(0U, 0U);
+        return;
+    }
+
+    pos = RX_DMA_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
+    OpticalInput_OnUartDmaState(pos, 1U);
+
+    if (pos == rx_dma_old_pos) {
+        return;
+    }
+
+    if (pos > rx_dma_old_pos) {
+        for (i = rx_dma_old_pos; i < pos; i++) {
+            UART1_ProcessRxByte(rx_dma_buf[i]);
+        }
+    } else {
+        for (i = rx_dma_old_pos; i < RX_DMA_SIZE; i++) {
+            UART1_ProcessRxByte(rx_dma_buf[i]);
+        }
+        for (i = 0U; i < pos; i++) {
+            UART1_ProcessRxByte(rx_dma_buf[i]);
+        }
+    }
+
+    rx_dma_old_pos = pos;
 }
 
 static void ProcessLine(char *line)
@@ -154,11 +222,14 @@ static void UART_ParseByte_ISR(uint8_t b)
 
 void PidTuning_Init(void)
 {
-    UART1_StartRxToIdle_DMA();
+    OpticalInput_Init();
+    UART1_StartRxDMA();
 }
 
 void PidTuning_ProcessPendingCommand(void)
 {
+    UART1_ProcessRxDMA_RingBuffer();
+
     if (line_ready) {
         char local[CMD_LINE_SIZE];
 
@@ -175,12 +246,8 @@ void PidTuning_ProcessPendingCommand(void)
 void PidTuning_HandleRxEvent(UART_HandleTypeDef *huart, uint16_t Size)
 {
     if (huart->Instance == USART1) {
-        uint16_t i;
-
-        for (i = 0; i < Size; i++) {
-            UART_ParseByte_ISR(rx_dma_buf[i]);
-        }
-        UART1_StartRxToIdle_DMA();
+        OpticalInput_OnUartRxEvent(Size);
+        UART1_ProcessRxDMA_RingBuffer();
     }
 }
 
@@ -189,10 +256,12 @@ void PidTuning_HandleUartError(UART_HandleTypeDef *huart)
     if (huart->Instance == USART1) {
         volatile uint32_t temp;
 
+        OpticalInput_OnUartError(huart->ErrorCode);
         HAL_UART_DMAStop(&huart1);
         temp = huart->Instance->SR;
         temp = huart->Instance->DR;
         (void)temp;
-        UART1_StartRxToIdle_DMA();
+        OpticalInput_OnUartDmaRestart();
+        UART1_StartRxDMA();
     }
 }

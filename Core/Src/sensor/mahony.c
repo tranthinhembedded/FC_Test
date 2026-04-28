@@ -113,7 +113,7 @@ static void Mahony_UpdateOutput(MahonyAHRS_t *ahrs, Complimentary_Filter_t *outp
      * The raw Mahony quaternion in this project comes out with the opposite
      * roll/pitch sign after the sensor-axis remap, so invert only here.
      */
-    output->Euler_Angle_Rad[0] = -(roll_rad - ahrs->roll_trim_rad);
+    output->Euler_Angle_Rad[0] = (roll_rad - ahrs->roll_trim_rad);
     output->Euler_Angle_Rad[1] = -(pitch_rad - ahrs->pitch_trim_rad);
     output->Euler_Angle_Rad[2] = yaw_rad;
 

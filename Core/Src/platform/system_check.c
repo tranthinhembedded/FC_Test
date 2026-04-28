@@ -229,6 +229,8 @@ void SystemCheck_Update(uint32_t now_ms, uint8_t mag_div)
         Debug_Prearm_Block_Reason = 2U; /* Lower throttle to arm */
     } else if (RC_Raw_SW_Arm <= 1500U) {
         Debug_Prearm_Block_Reason = 3U; /* Arm switch not active */
+    } else if ((flight_optical_required_for_arm != 0U) && (flight_optical_arm_ok == 0U)) {
+        Debug_Prearm_Block_Reason = 5U; /* Optical flow required for HOVER arm */
     } else {
         Debug_Prearm_Block_Reason = 0U; /* Ready */
     }

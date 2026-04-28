@@ -5,7 +5,7 @@
 #include "platform/tim.h"
 #include "sensor/sensor_common.h"
 #include "sensor/sensor_check.h"
-
+#include "comm/optical_input.h"
 #include <math.h>
 
 #define MIN_ARM 1100
@@ -27,6 +27,13 @@
 #define OPTFLOW_CAPTURE_STICK_THRESHOLD_US  20.0f
 #define OPTFLOW_RELEASE_STICK_THRESHOLD_US  35.0f
 #define OPTFLOW_VELOCITY_LPF_GAIN           0.35f
+#define ARM_REQUIRED_OPTICAL_FLOW           1U
+#define ARM_OPTICAL_TIMEOUT_MS              300U
+#define ARM_OPTICAL_MIN_FLOW_QUALITY        25U
+#define ARM_OPTICAL_MIN_RANGE_QUALITY       20U
+#define ARM_OPTICAL_MIN_DISTANCE_MM                 80U
+#define ARM_OPTICAL_MAX_DISTANCE_MM                 6000U
+#define PILOT_DISARM_DEBOUNCE_MS            80U
 
 static FlightController_OpticalFlowState_t optical_flow_state = {0};
 static uint8_t optical_flow_lpf_inited = 0U;
@@ -49,6 +56,7 @@ static PID_ALTIDUE_t PID_VELHOLD_Y = {
 
 static MPC_Status_t last_MPC_Status = HOVER;
 static uint8_t reset_pid_request = 0;
+static uint32_t pilot_disarm_low_since_ms = 0U;
 volatile uint32_t flight_arm_block_count = 0U;
 volatile uint32_t flight_safety_disarm_count = 0U;
 volatile uint32_t flight_failsafe_enter_count = 0U;
@@ -57,7 +65,11 @@ volatile uint32_t flight_failsafe_reason_mask = 0U;
 volatile float32_t flight_failsafe_throttle_us = 1000.0f;
 volatile float32_t flight_failsafe_elapsed_s = 0.0f;
 volatile uint8_t flight_failsafe_state = FLIGHT_FAILSAFE_INACTIVE;
-
+volatile uint8_t flight_optical_arm_ok = 0U;
+volatile uint8_t flight_optical_required_for_arm = 0U;
+volatile uint8_t flight_optical_arm_block_reason = 1U;
+volatile uint8_t flight_poshold_enabled = 0U;
+volatile uint8_t flight_poshold_active = 0U;
 static float32_t flight_failsafe_min_throttle_time_s = 0.0f;
 
 static float32_t clamp_float(float32_t value, float32_t min_value, float32_t max_value)
@@ -127,6 +139,7 @@ static void FlightController_EnterFailsafeLanding(uint32_t reason_mask, float32_
     ARM_Status = ARM;
     enable_motor = 1U;
     MPC_Status = HOVER;
+    last_MPC_Status = HOVER;
 }
 
 static void FlightController_UpdateFailsafeLanding(float32_t dt)
@@ -380,7 +393,59 @@ void FlightController_GetOpticalFlowState(FlightController_OpticalFlowState_t *s
         *state_out = optical_flow_state;
     }
 }
+static uint8_t FlightController_OpticalArmReady(void)
+{
+#if ARM_REQUIRED_OPTICAL_FLOW
+    uint32_t now_ms = HAL_GetTick();
+    uint32_t age_ms;
 
+    if(optical_rx_packet_valid == 0U){
+        flight_optical_arm_block_reason = 1U; /* No optical packet accepted yet */
+        return 0U;
+    }
+
+    if(optical_rx_last_frame_tick_ms == 0U){
+        flight_optical_arm_block_reason = 2U; /* No optical frame timestamp */
+        return 0U;
+    }
+
+    age_ms = now_ms - optical_rx_last_frame_tick_ms;
+    if(age_ms > ARM_OPTICAL_TIMEOUT_MS){
+        flight_optical_arm_block_reason = 3U; /* Optical frame stale */
+        return 0U;
+    }
+    if(optical_rx_flow_valid == 0U){
+        flight_optical_arm_block_reason = 4U; /* Flow data invalid */
+        return 0U;
+    }
+    if(optical_rx_distance_out_of_range != 0U){
+        flight_optical_arm_block_reason = 5U; /* Range sensor reports out-of-range */
+        return 0U;
+    }
+    if ((optical_rx_distance_mm < ARM_OPTICAL_MIN_DISTANCE_MM)
+        || (optical_rx_distance_mm > ARM_OPTICAL_MAX_DISTANCE_MM)) {
+        flight_optical_arm_block_reason = 6U; /* Distance outside arming range */
+        return 0U;
+    }
+
+    if ((optical_rx_flow_quality_valid != 0U)
+        && (optical_rx_flow_quality < ARM_OPTICAL_MIN_FLOW_QUALITY)) {
+        flight_optical_arm_block_reason = 7U; /* Flow quality too low */
+        return 0U;
+    }
+
+    if ((optical_rx_range_quality_valid != 0U)
+        && (optical_rx_range_quality < ARM_OPTICAL_MIN_RANGE_QUALITY)) {
+        flight_optical_arm_block_reason = 8U; /* Range quality too low */
+        return 0U;
+    }
+    flight_optical_arm_block_reason = 0U;
+    return 1U;
+#else
+    flight_optical_arm_block_reason = 0U;
+    return 1U;
+#endif
+}
 void MPC(void)
 {
     float32_t feedback[3];
@@ -389,8 +454,13 @@ void MPC(void)
     float32_t stick_yaw;
     float32_t real_dt = MPU6500_DATA.dt;
     float32_t previous_throttle = Throttle;
+    MPC_Status_t requested_mode;
+    uint8_t optical_arm_ok;
     uint8_t arm_interlock_ok;
+    uint8_t optical_required_for_arm;
+    uint8_t can_arm;
     uint8_t critical_attitude_ok;
+    uint8_t arm_switch_low;
     uint8_t pilot_requested_disarm;
     uint8_t failsafe_landing_active = 0U;
     uint32_t failsafe_reason_mask;
@@ -412,15 +482,35 @@ void MPC(void)
         Throttle = (float32_t)RC_Raw_Throttle;
     }
 
+    requested_mode = (RC_Raw_SW_Mode > 1500U) ? RATE_MODE : HOVER;
+    uint8_t poshold_enabled = (RC_Raw_SW_PosHold > 1500U) ? 1U : 0U;
+    flight_poshold_enabled = poshold_enabled;
+    flight_poshold_active = 0U; // Default to inactive, will be updated in HOVER block
+    optical_arm_ok = FlightController_OpticalArmReady();
+    flight_optical_arm_ok = optical_arm_ok;
+    optical_required_for_arm = (uint8_t)((poshold_enabled != 0U) ? ARM_REQUIRED_OPTICAL_FLOW : 0U);
+    flight_optical_required_for_arm = optical_required_for_arm;
+
     arm_interlock_ok = (uint8_t)(
         (fc_preflight_ready != 0U)
      && (runtime_sensors_ok != 0U)
      && (rc_link_ok != 0U)
      && (is_calibrated != 0U)
      && (Complimentary_Filter.Fusion_OK != 0U));
+    can_arm = (uint8_t)((arm_interlock_ok != 0U)
+        && ((optical_required_for_arm == 0U) || (optical_arm_ok != 0U)));
 
     critical_attitude_ok = ((system_sensor_fault_mask & FAILSAFE_CRITICAL_FAULT_MASK) == 0U) ? 1U : 0U;
-    pilot_requested_disarm = (uint8_t)((rc_link_ok != 0U) && (RC_Raw_SW_Arm <= 1500U));
+    arm_switch_low = (uint8_t)((rc_link_ok != 0U) && (RC_Raw_SW_Arm <= 1500U));
+    if (arm_switch_low != 0U) {
+        if (pilot_disarm_low_since_ms == 0U) {
+            pilot_disarm_low_since_ms = HAL_GetTick();
+        }
+    } else {
+        pilot_disarm_low_since_ms = 0U;
+    }
+    pilot_requested_disarm = (uint8_t)((pilot_disarm_low_since_ms != 0U)
+        && ((uint32_t)(HAL_GetTick() - pilot_disarm_low_since_ms) >= PILOT_DISARM_DEBOUNCE_MS));
     failsafe_reason_mask = system_sensor_fault_mask;
     if (rc_link_ok == 0U) {
         failsafe_reason_mask |= FLIGHT_FAILSAFE_REASON_RC_LOSS;
@@ -460,7 +550,10 @@ void MPC(void)
     }
 
     if (failsafe_landing_active == 0U) {
-        MPC_Status_t current_mode = (RC_Raw_SW_Mode > 1500U) ? HOVER : RATE_MODE;
+        MPC_Status_t current_mode = requested_mode;
+        if ((RC_Raw_Throttle < 950U) && (ARM_Status == ARM)) {
+            current_mode = HOVER;
+        }
         if (current_mode != last_MPC_Status) {
             MPC_Status = current_mode;
             last_MPC_Status = current_mode;
@@ -471,7 +564,7 @@ void MPC(void)
 
     if (failsafe_landing_active == 0U) {
         if (RC_Raw_SW_Arm > 1500U) {
-            if ((ARM_Status == NOT_ARM) && (Throttle < 1150.0f) && (arm_interlock_ok != 0U)) {
+            if ((ARM_Status == NOT_ARM) && (Throttle < 1150.0f) && (can_arm != 0U)) {
                 FlightController_ClearFailsafe();
                 ARM_Status = ARM;
                 enable_motor = 1U;
@@ -480,7 +573,7 @@ void MPC(void)
                 angle_desired[1] = 0.0f;
                 angle_desired[2] = Complimentary_Filter.Euler_Angle_Deg[2];
                 reset_pid_request = 1U;
-            } else if ((ARM_Status == NOT_ARM) && (arm_interlock_ok == 0U)) {
+            } else if ((ARM_Status == NOT_ARM) && (can_arm == 0U)) {
                 flight_arm_block_count++;
             }
         } else {
@@ -523,8 +616,11 @@ void MPC(void)
         angle_desired[0] = stick_roll * MANUAL_TILT_SCALE_DEG;
         angle_desired[1] = -stick_pitch * MANUAL_TILT_SCALE_DEG;
 
-        if ((optical_flow_state.healthy != 0U)
+        uint8_t poshold_enabled = (RC_Raw_SW_PosHold > 1500U) ? 1U : 0U;
+
+        if ((poshold_enabled != 0U) && (optical_flow_state.healthy != 0U)
             && ((optical_flow_state.hold_locked != 0U) || (pilot_centered_for_hold != 0U))) {
+            flight_poshold_active = 1U;
             if (pilot_demands_translation != 0U) {
                 reset_optical_flow_controller();
             } else {
@@ -536,6 +632,7 @@ void MPC(void)
                 angle_desired[1] += optical_flow_state.correction_deg[1];
             }
         } else {
+            flight_poshold_active = 0U;
             reset_optical_flow_controller();
         }
 
@@ -560,10 +657,8 @@ void MPC(void)
 
     if (RC_Raw_Throttle < 950U) {
         if (ARM_Status == ARM) {
-            MPC_Status = HOVER;
             angle_desired[0] = 0.0f;
             angle_desired[1] = 0.0f;
-            reset_optical_flow_controller();
             Throttle -= 0.2f;
             if (Throttle < 1100.0f) {
                 ARM_Status = NOT_ARM;

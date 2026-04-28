@@ -30,9 +30,9 @@
  * orientation on the airframe.
  */
 #define ICM20602_ACCEL_SIGN_X       (1.0f)  /* Pitch (Drone X axis) */
-#define ICM20602_ACCEL_SIGN_Y       (1.0f)  /* Roll (Drone Y axis) */
+#define ICM20602_ACCEL_SIGN_Y       (-1.0f)  /* Roll (Drone Y axis) */
 #define ICM20602_ACCEL_SIGN_Z       (-1.0f)
-#define ICM20602_GYRO_SIGN_X        (-1.0f)
+#define ICM20602_GYRO_SIGN_X        (1.0f)
 #define ICM20602_GYRO_SIGN_Y        (-1.0f)
 #define ICM20602_GYRO_SIGN_Z        (-1.0f)
 
@@ -99,17 +99,26 @@ static void ICM20602_ParseMotionFrame(uint8_t *buffer)
 {
     float32_t acc_temp[3];
     float32_t gyro_temp[3];
+    int16_t imu_acc_x;
+    int16_t imu_acc_y;
+    int16_t imu_gyro_x;
+    int16_t imu_gyro_y;
     int i;
     static uint8_t acc_lpf_inited = 0U;
     static uint8_t gyro_lpf_inited = 0U;
 
-    /* Sensor was rotated 90 degrees on the drone: Swap X (buffer 0/1) and Y (buffer 2/3) */
-    raw_acc[1] = (int16_t)(buffer[0] << 8 | buffer[1]); /* IMU X -> Drone Y (Pitch) */
-    raw_acc[0] = (int16_t)(buffer[2] << 8 | buffer[3]); /* IMU Y -> Drone X (Roll) */
+    imu_acc_x = (int16_t)(buffer[0] << 8 | buffer[1]);
+    imu_acc_y = (int16_t)(buffer[2] << 8 | buffer[3]);
+    imu_gyro_x = (int16_t)(buffer[8] << 8 | buffer[9]);
+    imu_gyro_y = (int16_t)(buffer[10] << 8 | buffer[11]);
+
+    /* Keep sensor X/Y unswapped: acc[0] feeds pitch angle, acc[1] feeds roll angle. */
+    raw_acc[0] = imu_acc_x;
+    raw_acc[1] = imu_acc_y;
     raw_acc[2] = (int16_t)(buffer[4] << 8 | buffer[5]);
     
-    raw_gyro[1] = (int16_t)(buffer[8] << 8 | buffer[9]);   /* IMU X -> Drone Y (Pitch) */
-    raw_gyro[0] = (int16_t)(buffer[10] << 8 | buffer[11]); /* IMU Y -> Drone X (Roll) */
+    raw_gyro[0] = imu_gyro_x;
+    raw_gyro[1] = imu_gyro_y;
     raw_gyro[2] = (int16_t)(buffer[12] << 8 | buffer[13]);
 
     if (is_calibrated) {
@@ -377,13 +386,18 @@ void ICM20602_Calibrate(void)
 
     for (i = 0U; i < ICM20602_CALIB_SAMPLES; i++) {
         if (ICM20602_ReadRegisters(ICM20602_REG_ACCEL_XOUT_H, buffer, ICM20602_BURST_LENGTH) == HAL_OK) {
-            /* Swap X and Y here as well so the bias matches the swapped Drone frame */
-            sum_acc[1] += (int16_t)(buffer[0] << 8 | buffer[1]); /* IMU X -> Drone Y */
-            sum_acc[0] += (int16_t)(buffer[2] << 8 | buffer[3]); /* IMU Y -> Drone X */
+            int16_t imu_acc_x = (int16_t)(buffer[0] << 8 | buffer[1]);
+            int16_t imu_acc_y = (int16_t)(buffer[2] << 8 | buffer[3]);
+            int16_t imu_gyro_x = (int16_t)(buffer[8] << 8 | buffer[9]);
+            int16_t imu_gyro_y = (int16_t)(buffer[10] << 8 | buffer[11]);
+
+            /* Keep calibration bias in the same body frame mapping as runtime reads. */
+            sum_acc[0] += imu_acc_x;
+            sum_acc[1] += imu_acc_y;
             sum_acc[2] += (int16_t)(buffer[4] << 8 | buffer[5]);
-            
-            sum_gyro[1] += (int16_t)(buffer[8] << 8 | buffer[9]);   /* IMU X -> Drone Y */
-            sum_gyro[0] += (int16_t)(buffer[10] << 8 | buffer[11]); /* IMU Y -> Drone X */
+
+            sum_gyro[0] += imu_gyro_x;
+            sum_gyro[1] += imu_gyro_y;
             sum_gyro[2] += (int16_t)(buffer[12] << 8 | buffer[13]);
             valid_samples++;
         }

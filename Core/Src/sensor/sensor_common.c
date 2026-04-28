@@ -89,6 +89,7 @@ volatile uint32_t RC_Raw_Throttle = 0;
 volatile uint32_t RC_Raw_Yaw = 0;
 volatile uint32_t RC_Raw_SW_Arm = 0;
 volatile uint32_t RC_Raw_SW_Mode = 0;
+volatile uint32_t RC_Raw_SW_PosHold = 0;
 
 float32_t Baro_Alt_m = 0.0f;
 float32_t Baro_Pressure_Pa = 0.0f;

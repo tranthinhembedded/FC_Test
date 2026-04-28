@@ -7,7 +7,8 @@
   *                   - IMU: ICM20602 via SPI1 (imu_config module)
   *                   - MAG: HMC5883L/QMC5883L via I2C1 (magnetometer_sensor module)
   *                   - PID Tuning: USART1 DMA (pid_tuning module)
-  *                   - Telemetry: USART1 (telemetry module)
+  *                   - Optical flow: USART6 direct MTF-02P parser
+  *                   - Telemetry: disabled while USART1 is dedicated to optical RX
   *                   - Control: 1kHz loop, Angle / Rate mode switching
   */
 /* USER CODE END Header */
@@ -30,6 +31,7 @@
 #include "sensor/bmp280_sensor.h"
 #include "control/flight_control.h"
 #include "input/rc_input.h"
+#include "comm/optical_direct.h"
 #include "comm/pid_tuning.h"
 #include "comm/telemetry.h"
 #include "platform/system_check.h"
@@ -46,10 +48,12 @@
 #define MAIN_LOOP_OVERRUN_TOLERANCE_US 50U
 #define MAIN_LOOP_DT_RESYNC_THRESHOLD  10000U  /* >10 ms → clamp dt */
 #define MAIN_LOOP_DT_MAX_WINDOW_MS     1000U   /* rolling 1 s max for debugger */
+#define UART1_TELEMETRY_ENABLED        0U      /* keep USART1 quiet for optical RX test */
 #define TELEMETRY_PERIOD_MS            100U    /* 10 Hz telemetry */
 #define MAG_UPDATE_DIV                 20U     /* 50 Hz magnetometer update */
 #define BARO_UPDATE_DIV                40U     /* 25 Hz barometer update */
 #define BARO_UPDATE_PHASE_DIV          10U     /* stagger baro away from mag */
+#define OPTICAL_IDLE_MIN_SLACK_US      120U    /* keep this much margin before next 1kHz tick */
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -75,6 +79,7 @@ volatile float Debug_PID_Rate_Roll_Out = 0.0f;
  *   2 = Throttle too high to arm
  *   3 = Arm switch not activated
  *   4 = RC link lost
+ *   5 = Optical flow required but not ready
  */
 volatile uint8_t Debug_Prearm_Block_Reason = 1U;
 
@@ -85,7 +90,9 @@ volatile uint16_t Motor_M4_FL_Speed = 0U; /* PWM_MOTOR[2] → TIM4 CH1 */
 volatile uint16_t Motor_M3_BL_Speed = 0U; /* PWM_MOTOR[3] → TIM4 CH2 */
 
 /* --- Telemetry --- */
+#if UART1_TELEMETRY_ENABLED
 uint32_t last_telemetry_time = 0U;
+#endif
 
 /* --- Loop timing diagnostics --- */
 volatile uint32_t loop_dt_us       = 0U;
@@ -145,9 +152,9 @@ int main(void)
   MX_SPI1_Init();
   MX_USART2_UART_Init();
   MX_USART1_UART_Init();
+  MX_USART6_UART_Init();
   MX_I2C1_Init();
   MX_I2C2_Init();
-  MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
   /* Start ESC idle PWM before long startup delays so the ESCs can finish
    * their power-up/arming tone sequence reliably.
@@ -178,6 +185,9 @@ int main(void)
   /* PID tuning UART (USART1) */
   PidTuning_Init();
 
+  /* Direct optical flow UART (USART6 PA11/PA12) */
+  OpticalDirect_Init();
+
   /* Safe initial state */
   enable_motor        = 0U;
   ARM_Status          = NOT_ARM;
@@ -203,14 +213,15 @@ int main(void)
   {
     uint32_t now_ms      = HAL_GetTick();
     uint32_t current_time = TIM2->CNT;
+    uint32_t elapsed_since_loop = current_time - last_loop_time;
 
     /* USER CODE END WHILE */
 
     /* ================================================================
      * MAIN CONTROL LOOP – 1 kHz
      * ================================================================ */
-    if ((current_time - last_loop_time) >= MAIN_LOOP_PERIOD_US) {
-      uint32_t dt_us = current_time - last_loop_time;
+    if (elapsed_since_loop >= MAIN_LOOP_PERIOD_US) {
+      uint32_t dt_us = elapsed_since_loop;
       last_loop_time = current_time;
 
       if ((uint32_t)(now_ms - loop_dt_window_start_ms) >= MAIN_LOOP_DT_MAX_WINDOW_MS) {
@@ -231,6 +242,13 @@ int main(void)
 
       MPU6500_DATA.dt        = (float32_t)dt_us * 1.0e-6f;
       MPU6500_DATA.timestamp = current_time;
+
+      /* iBUS RC has control priority: drain UART2 DMA before MPC reads commands. */
+      RcReceiver_Process_DMA_Ring_Buffer();
+      RcReceiver_UpdateLinkStatus(now_ms);
+
+      /* Keep optical UART6 parser alive even when there is little idle time. */
+      OpticalDirect_Process();
 
       /* ---------- Sensor update ---------- */
       IMU_PROCESS();
@@ -275,18 +293,16 @@ int main(void)
       /* System health and heartbeat update */
       SystemCheck_Update(now_ms, mag_div);
 
-      /* iBUS: parse new bytes from DMA ring buffer */
-      RcReceiver_Process_DMA_Ring_Buffer();
-      RcReceiver_UpdateLinkStatus(now_ms);
-
       /* PID tuning command parser (USART1) */
       PidTuning_ProcessPendingCommand();
 
-      /* Telemetry @ 10 Hz */
+      /* Telemetry @ 10 Hz: disabled while USART1 is dedicated to optical RX. */
+#if UART1_TELEMETRY_ENABLED
       if ((now_ms - last_telemetry_time) >= TELEMETRY_PERIOD_MS) {
         Send_Telemetry();
         last_telemetry_time = now_ms;
       }
+#endif
 
       {
         uint32_t exec_us = TIM2->CNT - current_time;
@@ -298,6 +314,12 @@ int main(void)
           loop_overrun_count++;
         }
       }
+    } else if ((MAIN_LOOP_PERIOD_US - elapsed_since_loop) > OPTICAL_IDLE_MIN_SLACK_US) {
+      RcReceiver_Process_DMA_Ring_Buffer();
+      RcReceiver_UpdateLinkStatus(HAL_GetTick());
+
+      /* Use idle slack to catch up any remaining optical UART backlog. */
+      OpticalDirect_Process();
     }
   }
   /* USER CODE END 3 */
@@ -368,6 +390,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
   PidTuning_HandleUartError(huart);
+  OpticalDirect_HandleUartError(huart);
   RcReceiver_HandleUartError(huart);
 }
 
