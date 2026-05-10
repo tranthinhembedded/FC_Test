@@ -1,6 +1,7 @@
 #include "comm/optical_input.h"
 
 #include "main.h"
+#include "control/flight_control.h"
 
 volatile uint8_t optical_rx_packet_valid = 0U;
 volatile uint8_t optical_rx_seq = 0U;
@@ -155,15 +156,31 @@ void OpticalInput_ApplyPayload(uint8_t seq, const optical_payload_t *payload)
     optical_rx_flow_y_raw = payload->flow_y_raw;
     optical_rx_range_quality = payload->range_quality;
     optical_rx_flow_quality = payload->flow_quality;
-    optical_rx_last_frame_tick_ms = HAL_GetTick();
-    optical_rx_frame_count++;
     OpticalInput_UpdateFlags(payload->flags);
 
     if (s_optical_seq_initialized != 0U) {
         if ((uint8_t)(s_optical_last_seq + 1U) != seq) {
             optical_rx_seq_gap_count++;
         }
+        
+        // Tính toán dt và cập nhật vào Flight Controller
+        uint32_t now = HAL_GetTick();
+        if (now > optical_rx_last_frame_tick_ms) {
+            float32_t dt = (float32_t)(now - optical_rx_last_frame_tick_ms) * 0.001f;
+            float32_t alt = (float32_t)payload->distance_mm * 0.001f;
+            
+            // Bypass: Nếu đang ở sát đất hoặc lỗi Lidar, giả định 0.1m để test
+            if (alt < 0.01f) alt = 0.1f;
+            
+            float32_t vx = (float32_t)payload->flow_x_raw * 0.1f; 
+            float32_t vy = (float32_t)payload->flow_y_raw * 0.1f;
+            
+            // Cập nhật: Tiến = -Y (đã đúng), Phải = X (đảo dấu so với lần trước)
+            FlightController_UpdateOpticalFlowVelocity(-vy, vx, alt, (float32_t)payload->flow_quality, dt);
+        }
     }
+    optical_rx_last_frame_tick_ms = HAL_GetTick();
+    optical_rx_frame_count++;
     s_optical_seq_initialized = 1U;
     s_optical_last_seq = seq;
 }

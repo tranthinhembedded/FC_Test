@@ -48,11 +48,11 @@
 #define MAIN_LOOP_OVERRUN_TOLERANCE_US 50U
 #define MAIN_LOOP_DT_RESYNC_THRESHOLD  10000U  /* >10 ms → clamp dt */
 #define MAIN_LOOP_DT_MAX_WINDOW_MS     1000U   /* rolling 1 s max for debugger */
-#define UART1_TELEMETRY_ENABLED        0U      /* keep USART1 quiet for optical RX test */
-#define TELEMETRY_PERIOD_MS            100U    /* 10 Hz telemetry */
-#define MAG_UPDATE_DIV                 20U     /* 50 Hz magnetometer update */
-#define BARO_UPDATE_DIV                40U     /* 25 Hz barometer update */
-#define BARO_UPDATE_PHASE_DIV          10U     /* stagger baro away from mag */
+#define UART1_TELEMETRY_ENABLED        1U      /* keep USART1 quiet for optical RX test */
+#define TELEMETRY_PERIOD_MS             100U   /* 10 Hz telemetry */
+#define MAG_UPDATE_DIV                  40U    /* 25 Hz magnetometer update */
+#define BARO_UPDATE_DIV                100U    /* 10 Hz barometer update */
+#define BARO_UPDATE_PHASE_DIV           20U    /* stagger baro away from mag */
 #define OPTICAL_IDLE_MIN_SLACK_US      120U    /* keep this much margin before next 1kHz tick */
 /* USER CODE END PD */
 
@@ -296,14 +296,7 @@ int main(void)
       /* PID tuning command parser (USART1) */
       PidTuning_ProcessPendingCommand();
 
-      /* Telemetry @ 10 Hz: disabled while USART1 is dedicated to optical RX. */
-#if UART1_TELEMETRY_ENABLED
-      if ((now_ms - last_telemetry_time) >= TELEMETRY_PERIOD_MS) {
-        Send_Telemetry();
-        last_telemetry_time = now_ms;
-      }
-#endif
-
+      /* ── Measure exec time BEFORE telemetry (snprintf nặng, không tính vào loop) ── */
       {
         uint32_t exec_us = TIM2->CNT - current_time;
         loop_exec_us = exec_us;
@@ -314,6 +307,14 @@ int main(void)
           loop_overrun_count++;
         }
       }
+
+      /* Telemetry @ 10 Hz – chạy SAU khi đo exec_us để không ảnh hưởng timing */
+#if UART1_TELEMETRY_ENABLED
+      if ((now_ms - last_telemetry_time) >= TELEMETRY_PERIOD_MS) {
+        Send_Telemetry();
+        last_telemetry_time = now_ms;
+      }
+#endif
     } else if ((MAIN_LOOP_PERIOD_US - elapsed_since_loop) > OPTICAL_IDLE_MIN_SLACK_US) {
       RcReceiver_Process_DMA_Ring_Buffer();
       RcReceiver_UpdateLinkStatus(HAL_GetTick());

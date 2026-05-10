@@ -275,7 +275,7 @@ static void Process_iBUS_Byte(uint8_t byte)
             
             if (checksum == received_checksum) {
                 uint32_t ch_roll = (uint32_t)((uint16_t)ibus_frame_buf[2]  | ((uint16_t)ibus_frame_buf[3]  << 8));
-                uint32_t ch_pitch = (uint32_t)((uint16_t)ibus_frame_buf[4]  | ((uint16_t)ibus_frame_buf[5]  << 8));
+                uint32_t ch_pitch = 3000 - (uint32_t)((uint16_t)ibus_frame_buf[4]  | ((uint16_t)ibus_frame_buf[5]  << 8));
                 uint32_t ch_throttle = (uint32_t)((uint16_t)ibus_frame_buf[6]  | ((uint16_t)ibus_frame_buf[7]  << 8));
                 uint32_t ch_yaw = (uint32_t)((uint16_t)ibus_frame_buf[8]  | ((uint16_t)ibus_frame_buf[9]  << 8));
                 uint32_t ch_arm = (uint32_t)((uint16_t)ibus_frame_buf[10] | ((uint16_t)ibus_frame_buf[11] << 8));

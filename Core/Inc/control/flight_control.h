@@ -49,5 +49,6 @@ void FlightController_UpdateOpticalFlowVelocity(float32_t velocity_x_body_mps,
                                                 float32_t quality,
                                                 float32_t dt);
 void FlightController_GetOpticalFlowState(FlightController_OpticalFlowState_t *state_out);
+void FlightController_SetOpticalFlowPID(const char *axis, float32_t p, float32_t i, float32_t d);
 
 #endif /* CORE_APP_CONTROL_FLIGHTCONTROLLER_FLIGHT_CONTROLLER_H_ */

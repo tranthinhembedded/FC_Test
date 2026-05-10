@@ -13,14 +13,16 @@
 #define MANUAL_RATE_SCALE_DPS               0.20f
 #define MANUAL_YAW_SPEED_DPS                150.0f
 #define MAX_ANGLE_TARGET_DEG                25.0f
+#define ARM_MAX_TILT_DEG                    25.0f
+#define CRITICAL_TILT_DISARM_DEG            70.0f
 #define FAILSAFE_LAND_MIN_THROTTLE_US       1120.0f
 #define FAILSAFE_LAND_DESCENT_US_PER_S      80.0f
 #define FAILSAFE_LAND_MIN_HOLD_TIME_S       2.0f
 #define FAILSAFE_LAND_MAX_TIME_S            12.0f
 #define FAILSAFE_CRITICAL_FAULT_MASK        (SYSTEM_SENSOR_FAULT_IMU | SYSTEM_SENSOR_FAULT_FUSION | SYSTEM_SENSOR_FAULT_CALIBRATION)
-#define OPTFLOW_STALE_TIMEOUT_S             0.15f
-#define OPTFLOW_MIN_QUALITY                 0.25f
-#define OPTFLOW_MIN_ALTITUDE_M              0.05f
+#define OPTFLOW_STALE_TIMEOUT_S             0.20f
+#define OPTFLOW_MIN_QUALITY                 0.10f
+#define OPTFLOW_MIN_ALTITUDE_M              0.01f
 #define OPTFLOW_MAX_ALTITUDE_M              10.0f
 #define OPTFLOW_MAX_BODY_VELOCITY_MPS       4.0f
 #define OPTFLOW_MAX_POSITION_ERROR_M        1.5f
@@ -35,8 +37,8 @@
 #define ARM_OPTICAL_MAX_DISTANCE_MM                 6000U
 #define PILOT_DISARM_DEBOUNCE_MS            80U
 
-static FlightController_OpticalFlowState_t optical_flow_state = {0};
-static uint8_t optical_flow_lpf_inited = 0U;
+FlightController_OpticalFlowState_t optical_flow_state = {0};
+uint8_t optical_flow_lpf_inited = 0U;
 static PID_ALTIDUE_t PID_POSHOLD_X = {
     .alpha_lpf = 0.85f, .feed_forward = 0.0f, .i_limit = 0.35f, .max_output = 0.8f,
     .kp = 1.10f, .ki = 0.08f, .kd = 0.0f, .d_limit = 0.25f,
@@ -257,13 +259,12 @@ static void MIX_THROTTLE(float32_t thr, float32_t *moment, float32_t *m)
 
     /*
      * Motor layout: M1(FR CCW), M2(BR CW), M3(BL CCW), M4(FL CW)
-     * Yaw right (+): CCW motors speed up, CW motors slow down.
-     * Pitch up (+moment[1]): front motors increase, rear motors decrease.
+     * Yaw right (+): CCW motors (M1, M3) speed up, CW motors (M2, M4) slow down.
      */
-    m[0] = thr - moment[0] - moment[1] - moment[2];
-    m[1] = thr - moment[0] + moment[1] + moment[2];
-    m[2] = thr + moment[0] + moment[1] - moment[2];
-    m[3] = thr + moment[0] - moment[1] + moment[2];
+    m[0] = thr - moment[0] - moment[1] + moment[2];
+    m[1] = thr - moment[0] + moment[1] - moment[2];
+    m[2] = thr + moment[0] + moment[1] + moment[2];
+    m[3] = thr + moment[0] - moment[1] - moment[2];
 
     for (i = 0; i < 4; i++) {
         if (m[i] > 1850) {
@@ -328,6 +329,8 @@ void FlightController_ResetOpticalFlowHold(void)
     reset_optical_flow_controller();
 }
 
+
+
 void FlightController_UpdateOpticalFlowVelocity(float32_t velocity_x_body_mps,
                                                 float32_t velocity_y_body_mps,
                                                 float32_t altitude_m,
@@ -345,7 +348,7 @@ void FlightController_UpdateOpticalFlowVelocity(float32_t velocity_x_body_mps,
 
     if ((dt < 0.001f)
         || (dt > 0.1f)
-        || (altitude_m < OPTFLOW_MIN_ALTITUDE_M)
+        || (altitude_m < 0.01f)
         || (altitude_m > OPTFLOW_MAX_ALTITUDE_M)
         || (optical_flow_state.quality < OPTFLOW_MIN_QUALITY)) {
         invalidate_optical_flow_hold();
@@ -391,6 +394,23 @@ void FlightController_GetOpticalFlowState(FlightController_OpticalFlowState_t *s
 {
     if (state_out != 0) {
         *state_out = optical_flow_state;
+    }
+}
+
+void FlightController_SetOpticalFlowPID(const char *axis, float32_t p, float32_t i, float32_t d)
+{
+    if (axis[0] == 'V') {
+        if (axis[1] == 'X') {
+            PID_VELHOLD_X.kp = p; PID_VELHOLD_X.ki = i; PID_VELHOLD_X.kd = d;
+        } else if (axis[1] == 'Y') {
+            PID_VELHOLD_Y.kp = p; PID_VELHOLD_Y.ki = i; PID_VELHOLD_Y.kd = d;
+        }
+    } else if (axis[0] == 'P') {
+        if (axis[1] == 'X') {
+            PID_POSHOLD_X.kp = p; PID_POSHOLD_X.ki = i; PID_POSHOLD_X.kd = d;
+        } else if (axis[1] == 'Y') {
+            PID_POSHOLD_Y.kp = p; PID_POSHOLD_Y.ki = i; PID_POSHOLD_Y.kd = d;
+        }
     }
 }
 static uint8_t FlightController_OpticalArmReady(void)
@@ -491,16 +511,23 @@ void MPC(void)
     optical_required_for_arm = (uint8_t)((poshold_enabled != 0U) ? ARM_REQUIRED_OPTICAL_FLOW : 0U);
     flight_optical_required_for_arm = optical_required_for_arm;
 
+    float32_t current_tilt_roll = fabsf(Complimentary_Filter.Euler_Angle_Deg[0]);
+    float32_t current_tilt_pitch = fabsf(Complimentary_Filter.Euler_Angle_Deg[1]);
+    uint8_t tilt_ok_for_arm = (current_tilt_roll < ARM_MAX_TILT_DEG && current_tilt_pitch < ARM_MAX_TILT_DEG) ? 1U : 0U;
+    uint8_t tilt_critical = (current_tilt_roll > CRITICAL_TILT_DISARM_DEG || current_tilt_pitch > CRITICAL_TILT_DISARM_DEG) ? 1U : 0U;
+
     arm_interlock_ok = (uint8_t)(
         (fc_preflight_ready != 0U)
      && (runtime_sensors_ok != 0U)
      && (rc_link_ok != 0U)
      && (is_calibrated != 0U)
-     && (Complimentary_Filter.Fusion_OK != 0U));
+     && (Complimentary_Filter.Fusion_OK != 0U)
+     && (tilt_ok_for_arm != 0U));
+    
     can_arm = (uint8_t)((arm_interlock_ok != 0U)
         && ((optical_required_for_arm == 0U) || (optical_arm_ok != 0U)));
 
-    critical_attitude_ok = ((system_sensor_fault_mask & FAILSAFE_CRITICAL_FAULT_MASK) == 0U) ? 1U : 0U;
+    critical_attitude_ok = (((system_sensor_fault_mask & FAILSAFE_CRITICAL_FAULT_MASK) == 0U) && (tilt_critical == 0U)) ? 1U : 0U;
     arm_switch_low = (uint8_t)((rc_link_ok != 0U) && (RC_Raw_SW_Arm <= 1500U));
     if (arm_switch_low != 0U) {
         if (pilot_disarm_low_since_ms == 0U) {
@@ -614,7 +641,7 @@ void MPC(void)
             && (fabsf(stick_pitch) < OPTFLOW_CAPTURE_STICK_THRESHOLD_US));
 
         angle_desired[0] = stick_roll * MANUAL_TILT_SCALE_DEG;
-        angle_desired[1] = -stick_pitch * MANUAL_TILT_SCALE_DEG;
+        angle_desired[1] = stick_pitch * MANUAL_TILT_SCALE_DEG;
 
         uint8_t poshold_enabled = (RC_Raw_SW_PosHold > 1500U) ? 1U : 0U;
 
@@ -651,7 +678,7 @@ void MPC(void)
     } else {
         reset_optical_flow_controller();
         angle_rate_desired[0] = stick_roll * MANUAL_RATE_SCALE_DPS;
-        angle_rate_desired[1] = -stick_pitch * MANUAL_RATE_SCALE_DPS;
+        angle_rate_desired[1] = stick_pitch * MANUAL_RATE_SCALE_DPS;
         angle_rate_desired[2] = stick_yaw * MANUAL_RATE_SCALE_DPS;
     }
 

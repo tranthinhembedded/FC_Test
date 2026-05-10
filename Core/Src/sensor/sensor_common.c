@@ -13,29 +13,29 @@ MagCal_Simple_t MagCal = {
     .S = 1.0f,
     .state = MAG_CAL_DONE,
     .samples_target = 5000,
-    .offset = {4.7840004f, -3.45000076f, 7.36000061f},
-    .scale = {0.937098265f, 0.954184234f, 1.13012183f}
+    .offset = {188.0f, -348.0f, -455.5f},
+    .scale = {1.02f, 0.97f, 1.0f}
 };
 
 Complimentary_Filter_t Complimentary_Filter = {
     .alpha = {0.99f, 0.99f, 0.96f},
-    .Offset_Deg = {0.0f, 0.0f, -28.97f},
-    .Offset_Rad = {0.0f, 0.0f, -28.97f * (float32_t)DEG_TO_RAD}
+    .Offset_Deg = {0.0f, 0.0f, 58.23f},
+    .Offset_Rad = {0.0f, 0.0f, 58.23f * (float32_t)DEG_TO_RAD}
 };
 
 PID_ALTIDUE_t PID_RATE_ROLL = {
     .alpha_lpf = 0.88f, .feed_forward = 0.05f, .i_limit = 75, .max_output = 400,
-    .kp = 0.700993f, .ki = 1.265000f, .kd = 0.112501f, .d_limit = 22.5f,
+    .kp = 0.700993f, .ki = 1.265000f, .kd = 0.112501f, .d_limit = 22.5f, .i_deadband = 1.0f,
 };
 
 PID_ALTIDUE_t PID_RATE_PITCH = {
     .alpha_lpf = 0.88f, .feed_forward = 0.05f, .i_limit = 75, .max_output = 400,
-    .kp = 0.700993f, .ki = 1.265000f, .kd = 0.112501f, .d_limit = 22.5f,
+    .kp = 0.700993f, .ki = 1.265000f, .kd = 0.112501f, .d_limit = 22.5f, .i_deadband = 1.0f,
 };
 
 PID_ALTIDUE_t PID_RATE_YAW = {
     .alpha_lpf = 0.88f, .feed_forward = 0.05f, .i_limit = 75, .max_output = 400,
-    .kp = 1.456010f, .ki = 1.401011f, .kd = 0.138702f, .d_limit = 22.5f,
+    .kp = 1.456010f, .ki = 1.401011f, .kd = 0.138702f, .d_limit = 22.5f, .i_deadband = 1.0f,
 };
 
 PID_ALTIDUE_t PID_ROLL = {

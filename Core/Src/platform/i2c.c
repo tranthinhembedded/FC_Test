@@ -21,7 +21,7 @@
 #include "platform/i2c.h"
 
 /* USER CODE BEGIN 0 */
-#define I2C_BUS_CLOCK_HZ              100000U
+#define I2C_BUS_CLOCK_HZ              400000U
 #define I2C_UNSTICK_CLOCK_US          10U
 #define I2C_UNSTICK_STRETCH_TIMEOUT_US 500U
 #define I2C_UNSTICK_PULSE_COUNT       9U

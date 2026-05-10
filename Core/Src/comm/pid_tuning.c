@@ -57,9 +57,7 @@ static void UART1_SendAck(const char *fmt, ...)
 
 static void UART1_ProcessRxByte(uint8_t byte)
 {
-    if (OpticalInput_FeedByte(byte) == 0U) {
-        UART_ParseByte_ISR(byte);
-    }
+    UART_ParseByte_ISR(byte);
 }
 
 static void UART1_StartRxDMA(void)
@@ -68,7 +66,6 @@ static void UART1_StartRxDMA(void)
 
     HAL_UART_DMAStop(&huart1);
     rx_dma_old_pos = 0U;
-    OpticalInput_OnUartDmaState(0U, 0U);
 
     status = HAL_UART_Receive_DMA(&huart1, rx_dma_buf, RX_DMA_SIZE);
     if (status != HAL_OK) {
@@ -78,7 +75,6 @@ static void UART1_StartRxDMA(void)
     }
 
     if (status == HAL_OK) {
-        OpticalInput_OnUartDmaState(0U, 1U);
         if (huart1.hdmarx != NULL) {
             __HAL_DMA_DISABLE_IT(huart1.hdmarx, DMA_IT_HT);
             __HAL_DMA_DISABLE_IT(huart1.hdmarx, DMA_IT_TC);
@@ -93,15 +89,14 @@ static void UART1_ProcessRxDMA_RingBuffer(void)
     uint16_t pos;
     uint16_t i;
 
-    OpticalInput_OnUartRxPinSample((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_10) == GPIO_PIN_SET) ? 1U : 0U);
+    /* OpticalInput_OnUartRxPinSample((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_10) == GPIO_PIN_SET) ? 1U : 0U); */
 
     if (huart1.hdmarx == NULL) {
-        OpticalInput_OnUartDmaState(0U, 0U);
+        /* OpticalInput_OnUartDmaState(0U, 0U); */
         return;
     }
 
     pos = RX_DMA_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
-    OpticalInput_OnUartDmaState(pos, 1U);
 
     if (pos == rx_dma_old_pos) {
         return;
@@ -135,6 +130,17 @@ static void ProcessLine(char *line)
         return;
     }
 
+    if (strcmp(line, "MAGCAL") == 0) {
+        MagCal.state = MAG_CAL_START;
+        MagCal.samples_target = 1000;
+        /* Toggle LED to confirm command reception */
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+        HAL_Delay(20);
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+        UART1_SendAck("MSG:MAG CAL START\n");
+        return;
+    }
+
     {
         char *tok = strtok(line, ":");
         if (tok && strcmp(tok, "PID") == 0) {
@@ -148,23 +154,26 @@ static void ProcessLine(char *line)
                 float i = strtof(s_ki, NULL);
                 float d = strtof(s_kd, NULL);
 
-                if (strcmp(axis, "ANG") == 0) {
-                    PID_ROLL.kp = p;
-                    PID_ROLL.ki = i;
-                    PID_ROLL.kd = d;
-                    PID_PITCH.kp = p;
-                    PID_PITCH.ki = i;
-                    PID_PITCH.kd = d;
+                if (strcmp(axis, "RR") == 0) {
+                    PID_RATE_ROLL.kp = p; PID_RATE_ROLL.ki = i; PID_RATE_ROLL.kd = d;
                     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-                } else if (strcmp(axis, "YANG") == 0) {
-                    PID_YAW.kp = p;
-                    PID_YAW.ki = i;
-                    PID_YAW.kd = d;
+                } else if (strcmp(axis, "RP") == 0) {
+                    PID_RATE_PITCH.kp = p; PID_RATE_PITCH.ki = i; PID_RATE_PITCH.kd = d;
                     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-                } else if (strcmp(axis, "YAW") == 0) {
-                    PID_RATE_YAW.kp = p;
-                    PID_RATE_YAW.ki = i;
-                    PID_RATE_YAW.kd = d;
+                } else if (strcmp(axis, "RY") == 0) {
+                    PID_RATE_YAW.kp = p; PID_RATE_YAW.ki = i; PID_RATE_YAW.kd = d;
+                    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+                } else if (strcmp(axis, "AR") == 0) {
+                    PID_ROLL.kp = p; PID_ROLL.ki = i; PID_ROLL.kd = d;
+                    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+                } else if (strcmp(axis, "AP") == 0) {
+                    PID_PITCH.kp = p; PID_PITCH.ki = i; PID_PITCH.kd = d;
+                    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+                } else if (strcmp(axis, "AY") == 0) {
+                    PID_YAW.kp = p; PID_YAW.ki = i; PID_YAW.kd = d;
+                    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+                } else if (axis[0] == 'V' || axis[0] == 'P') {
+                    FlightController_SetOpticalFlowPID(axis, p, i, d);
                     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
                 }
 
@@ -256,12 +265,10 @@ void PidTuning_HandleUartError(UART_HandleTypeDef *huart)
     if (huart->Instance == USART1) {
         volatile uint32_t temp;
 
-        OpticalInput_OnUartError(huart->ErrorCode);
         HAL_UART_DMAStop(&huart1);
         temp = huart->Instance->SR;
         temp = huart->Instance->DR;
         (void)temp;
-        OpticalInput_OnUartDmaRestart();
         UART1_StartRxDMA();
     }
 }

@@ -22,6 +22,7 @@ typedef struct {
     float32_t max_output;
     float32_t i_limit;
     float32_t d_limit;
+    float32_t i_deadband;
     float32_t output;
 } PID_ALTIDUE_t;
 

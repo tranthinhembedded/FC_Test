@@ -41,7 +41,9 @@ void Caculate_PID_ALTIDUE(PID_ALTIDUE_t *pid, float32_t setpoint, float32_t feed
         float32_t P_term = pid->kp * pid->error;
 
         if (fabsf(pid->error) < 20.0f) {
-            pid->integral += pid->ki * pid->error * dt;
+            if (fabsf(pid->error) > pid->i_deadband) {
+                pid->integral += pid->ki * pid->error * dt;
+            }
             pid->integral = clamp_value(pid->integral, -pid->i_limit, pid->i_limit);
         }
 
@@ -69,7 +71,9 @@ void Caculate_PID_Rate_ALTIDUE(PID_ALTIDUE_t *pid, float32_t setpoint, float32_t
         float32_t FF_term;
         float32_t ff_limit;
 
-        pid->integral += pid->ki * pid->error * dt;
+        if (fabsf(pid->error) > pid->i_deadband) {
+            pid->integral += pid->ki * pid->error * dt;
+        }
         pid->integral = clamp_value(pid->integral, -pid->i_limit, pid->i_limit);
 
         delta_measure = feedback - pid->prev_measure;
