@@ -900,8 +900,6 @@ Telemetry dùng `snprintf`, nên hiện đã được đặt sau khi đo `loop_e
 
 ## Giới hạn hiện tại
 
-- `vbat` trong telemetry đang hard-code `11.1f`, chưa đọc ADC thật.
-- GPS module có sẵn nhưng USART2 hiện dùng cho RC iBUS trong main flow.
 - Position Hold dựa trên optical flow integration tương đối, sẽ drift nếu flow scale/quality không ổn định.
 - Optical flow scale trong `OpticalInput_ApplyPayload()` đang dùng hệ số đơn giản cho raw flow, cần calibrate theo sensor thực tế.
 - Không có persistent storage cho PID/calibration; reboot sẽ quay về giá trị compile-time.
@@ -917,7 +915,6 @@ Telemetry dùng `snprintf`, nên hiện đã được đặt sau khi đo `loop_e
 - Hỗ trợ DShot ESC protocol.
 - Thêm altitude hold bằng barometer + optical rangefinder.
 - Tích hợp EKF nhẹ cho attitude/velocity/position.
-- Tách GPS sang UART riêng và thêm GPS position hold.
 - Thêm CLI cấu hình mixer/motor order.
 - Thêm unit test cho packet parser, PID và iBUS checksum.
 - Chuẩn hóa telemetry schema và tool ground station.
